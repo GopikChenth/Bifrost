@@ -2,6 +2,7 @@ package com.yourname.bifrost
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -27,13 +28,18 @@ class MainActivity : FlutterActivity() {
         ConcurrentHashMap<String, RunningServerProcess>()
     private var processEventSink: EventChannel.EventSink? = null
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Disable MTE/heap tagging at the native level as early as possible,
+        // before ART's JIT thread pool is fully active. This prevents both
+        // "pointer tag was truncated" SIGABRT in the bundled JRE and
+        // "futex requeue failed" crashes in ART's ConditionVariable on
+        // MIUI/Android 12 devices.
+        MteCompat.disable()
+        super.onCreate(savedInstanceState)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        // Disable MTE/heap tagging at the native level before any child process
-        // is spawned. This prevents "pointer tag was truncated" SIGABRT crashes
-        // in the bundled JRE on ARM devices with hardware MTE.
-        MteCompat.disable()
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
