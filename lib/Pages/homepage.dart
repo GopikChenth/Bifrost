@@ -6,8 +6,8 @@ import 'package:bifrost/Components/server_card.dart';
 import 'package:bifrost/Pages/setingspage.dart';
 import 'package:bifrost/Service/official_server_download_service.dart';
 import 'package:bifrost/Service/server_storage_service.dart';
-import 'package:bifrost/Utils/server_process_manager.dart';
-import 'package:bifrost/Utils/server_state.dart';
+import 'package:bifrost/Services/local_runtime_service.dart';
+import 'package:bifrost/Utils/local_runtime_models.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,12 +22,18 @@ class _HomePageState extends State<HomePage> {
       const OfficialServerDownloadService();
   final ServerStorageService _serverStorageService =
       const ServerStorageService();
-  final ServerProcessManager _serverProcessManager = ServerProcessManager();
+  final LocalRuntimeService _localRuntimeService =
+      const LocalRuntimeService();
   bool _isCreatingServer = false;
   String? _activeDownloadServerName;
   String? _activeDownloadFileName;
   int _downloadedBytes = 0;
   int? _totalDownloadBytes;
+  final Map<String, bool> _runtimeTestBusyByServer = <String, bool>{};
+  final Map<String, String> _runtimeMessageByServer = <String, String>{};
+  final Map<String, String> _consoleLabelByServer = <String, String>{};
+  final Map<String, String> _serverStatusLabelByServer = <String, String>{};
+  Timer? _serverStatusPollTimer;
 
   void _openSettingsPage() {
     Navigator.of(context).push(
@@ -225,6 +231,11 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _servers.remove(server);
+        if (serverPath != null) {
+          _runtimeTestBusyByServer.remove(serverPath);
+          _runtimeMessageByServer.remove(serverPath);
+          _consoleLabelByServer.remove(serverPath);
+        }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -241,85 +252,209 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _startServer(Map<String, Object> server) async {
-    final String serverName = server['name']! as String;
-    final String serverPath = server['path']! as String;
-
-    await _serverProcessManager.startServer(
-      serverName: serverName,
-      serverPath: serverPath,
-    );
-
-    if (!mounted) {
+  Future<void> _testRuntimeForServer(Map<String, Object> server) async {
+    final String? serverPath = server['path'] as String?;
+    if (serverPath == null || serverPath.trim().isEmpty) {
       return;
     }
 
-    final ServerRuntimeState state =
-        _serverProcessManager
-            .stateFor(serverName: serverName, serverPath: serverPath)
-            .value;
-
-    if (state.message != null && state.message!.isNotEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(state.message!)));
-    }
-  }
-
-  Future<void> _stopServer(Map<String, Object> server) async {
-    final String serverName = server['name']! as String;
-    final String serverPath = server['path']! as String;
+    setState(() {
+      _runtimeTestBusyByServer[serverPath] = true;
+      _consoleLabelByServer[serverPath] = 'Testing JVM';
+          _runtimeMessageByServer[serverPath] =
+          'Preparing bundled runtime and running java -version using the local JVM launch model.';
+    });
 
     try {
-      await _serverProcessManager.stopServer(
-        serverName: serverName,
-        serverPath: serverPath,
-      );
-    } catch (error) {
+      final LocalRuntimeStatus preparedStatus =
+          await _localRuntimeService.prepareBundledRuntimeHome();
+      final LocalRuntimeTestResult testResult = await _localRuntimeService
+          .runJavaVersion(workingDirectory: serverPath);
+
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-      return;
-    }
+      final bool passed = testResult.exitCode == 0;
+      setState(() {
+        _consoleLabelByServer[serverPath] = passed ? 'Runtime OK' : 'Runtime Failed';
+        _runtimeMessageByServer[serverPath] =
+            'Local runtime test exit=${testResult.exitCode}. '
+            'home=${testResult.status.runtimeHomeExists}, '
+            'release=${testResult.status.releaseExists}, '
+            'libjli=${testResult.status.libjliExists}, '
+            'libjvm=${testResult.status.libjvmExists}, '
+            'modules=${testResult.status.modulesExists}. '
+            'Prepared home: ${preparedStatus.runtimeHome}.';
+      });
+    } on LocalRuntimeServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
 
-    if (!mounted) {
-      return;
-    }
+      setState(() {
+        _consoleLabelByServer[serverPath] = 'Runtime Error';
+        _runtimeMessageByServer[serverPath] = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
 
-    final ServerRuntimeState state =
-        _serverProcessManager
-            .stateFor(serverName: serverName, serverPath: serverPath)
-            .value;
-
-    if (state.message != null && state.message!.isNotEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(state.message!)));
+      setState(() {
+        _consoleLabelByServer[serverPath] = 'Runtime Error';
+        _runtimeMessageByServer[serverPath] =
+            'Unable to complete the local runtime test.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _runtimeTestBusyByServer[serverPath] = false;
+        });
+      }
     }
   }
 
-  String _statusLabelFor(ServerRuntimeState state) {
-    switch (state.status) {
-      case ServerRuntimeStatus.idle:
-        return 'Offline';
-      case ServerRuntimeStatus.starting:
-        return 'Starting';
-      case ServerRuntimeStatus.running:
-        return 'Running';
-      case ServerRuntimeStatus.stopping:
-        return 'Stopping';
-      case ServerRuntimeStatus.error:
-        return 'Error';
+  Future<void> _startServer(Map<String, Object> server) async {
+    final String? serverPath = server['path'] as String?;
+    final String? memoryLabel = server['memory'] as String?;
+
+    if (serverPath == null || memoryLabel == null) {
+      return;
     }
+
+    setState(() {
+      _runtimeTestBusyByServer[serverPath] = true;
+      _serverStatusLabelByServer[serverPath] = 'Starting';
+      _consoleLabelByServer[serverPath] = 'Bootstrapping';
+      _runtimeMessageByServer[serverPath] =
+          'Preparing eula.txt, resolving the downloaded jar, and launching the local JVM.';
+    });
+
+    try {
+      final ServerLaunchConfig launchConfig = await _serverStorageService
+          .prepareServerLaunch(serverPath: serverPath, memoryLabel: memoryLabel);
+
+      final LocalServerStatus status = await _localRuntimeService.startServer(
+        serverPath: launchConfig.serverDirectory.path,
+        jarPath: launchConfig.jarFilePath,
+        maxRamMb: launchConfig.maxRamMb,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _applyServerStatus(
+        serverPath: serverPath,
+        status: status,
+        fallbackMessage:
+            'Launching ${launchConfig.jarFilePath} with ${launchConfig.maxRamMb} MB.',
+      );
+      _startServerStatusPolling();
+    } on ServerStorageException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _runtimeTestBusyByServer[serverPath] = false;
+        _serverStatusLabelByServer[serverPath] = 'Error';
+        _consoleLabelByServer[serverPath] = 'Launch Failed';
+        _runtimeMessageByServer[serverPath] = error.message;
+      });
+    } on LocalRuntimeServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _runtimeTestBusyByServer[serverPath] = false;
+        _serverStatusLabelByServer[serverPath] = 'Error';
+        _consoleLabelByServer[serverPath] = 'Launch Failed';
+        _runtimeMessageByServer[serverPath] = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _runtimeTestBusyByServer[serverPath] = false;
+        _serverStatusLabelByServer[serverPath] = 'Error';
+        _consoleLabelByServer[serverPath] = 'Launch Failed';
+        _runtimeMessageByServer[serverPath] =
+            'Unable to start the local server runtime.';
+      });
+    }
+  }
+
+  void _startServerStatusPolling() {
+    _serverStatusPollTimer?.cancel();
+    _serverStatusPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (Timer timer) async {
+        try {
+          final LocalServerStatus status =
+              await _localRuntimeService.getServerStatus();
+          if (!mounted) {
+            timer.cancel();
+            return;
+          }
+
+          final String? activeServerPath = status.activeServerPath;
+          if (activeServerPath != null) {
+            _applyServerStatus(serverPath: activeServerPath, status: status);
+          }
+
+          if (!status.isBusy) {
+            timer.cancel();
+          }
+        } catch (_) {
+          if (!mounted) {
+            timer.cancel();
+          }
+        }
+      },
+    );
+  }
+
+  void _applyServerStatus({
+    required String serverPath,
+    required LocalServerStatus status,
+    String? fallbackMessage,
+  }) {
+    final String statusLabel = switch (status.state) {
+      'starting' => 'Starting',
+      'running' => 'Running',
+      'stopped' => 'Stopped',
+      'error' => 'Error',
+      _ => 'Offline',
+    };
+
+    final String consoleLabel = switch (status.state) {
+      'starting' => 'Bootstrapping',
+      'running' => 'Live',
+      'stopped' => 'Stopped',
+      'error' => 'Crashed',
+      _ => 'Ready',
+    };
+
+    setState(() {
+      _serverStatusLabelByServer[serverPath] = statusLabel;
+      _consoleLabelByServer[serverPath] = consoleLabel;
+      _runtimeMessageByServer[serverPath] =
+          status.lastMessage ??
+          fallbackMessage ??
+          _runtimeMessageByServer[serverPath] ??
+          '';
+      _runtimeTestBusyByServer[serverPath] = status.isBusy;
+    });
   }
 
   @override
   void dispose() {
-    unawaited(_serverProcessManager.dispose());
+    _serverStatusPollTimer?.cancel();
     super.dispose();
   }
 
@@ -337,52 +472,49 @@ class _HomePageState extends State<HomePage> {
         ),
       if (_isCreatingServer && _servers.isNotEmpty) const SizedBox(height: 12),
       ..._servers.map((Map<String, Object> server) {
-        final String serverName = server['name']! as String;
-        final String serverPath = server['path']! as String;
-
+        final String? serverPath = server['path'] as String?;
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: ValueListenableBuilder<ServerRuntimeState>(
-            valueListenable: _serverProcessManager.stateFor(
-              serverName: serverName,
-              serverPath: serverPath,
-            ),
-            builder: (
-              BuildContext context,
-              ServerRuntimeState runtimeState,
-              Widget? child,
-            ) {
-              final bool isRunning =
-                  runtimeState.status == ServerRuntimeStatus.running;
-              final bool isBusy = runtimeState.isBusy;
-
-              return ServerCard(
-                name: serverName,
-                version: server['version']! as String,
-                serverType: server['type']! as String,
-                statusLabel: _statusLabelFor(runtimeState),
-                memoryLabel: server['memory']! as String,
-                runtimeMessage: runtimeState.message,
-                serverPath: server['path'] as String?,
-                isOnline: isRunning,
-                isBusy: isBusy || _isCreatingServer,
-                onDelete: _isCreatingServer || isRunning || isBusy
-                    ? null
-                    : () {
-                        _deleteServer(server);
-                      },
-                onStart: _isCreatingServer || isRunning || isBusy
+          child: ServerCard(
+            name: server['name']! as String,
+            version: server['version']! as String,
+            serverType: server['type']! as String,
+            statusLabel:
+                serverPath == null
+                    ? 'Offline'
+                    : (_serverStatusLabelByServer[serverPath] ?? 'Offline'),
+            memoryLabel: server['memory']! as String,
+            serverPath: serverPath,
+            isOnline:
+                serverPath != null &&
+                (_serverStatusLabelByServer[serverPath] == 'Running'),
+            isBusy:
+                _isCreatingServer ||
+                (serverPath != null &&
+                    (_runtimeTestBusyByServer[serverPath] ?? false)),
+            consoleLabel:
+                serverPath == null
+                    ? 'Ready'
+                    : (_consoleLabelByServer[serverPath] ?? 'Ready'),
+            runtimeMessage:
+                serverPath == null ? null : _runtimeMessageByServer[serverPath],
+            onStartServer:
+                serverPath == null || _isCreatingServer
                     ? null
                     : () {
                         _startServer(server);
                       },
-                onStop: _isCreatingServer || !isRunning || isBusy
+            onTestRuntime:
+                serverPath == null || _isCreatingServer
                     ? null
                     : () {
-                        _stopServer(server);
+                        _testRuntimeForServer(server);
                       },
-              );
-            },
+            onDelete: _isCreatingServer
+                ? null
+                : () {
+                    _deleteServer(server);
+                  },
           ),
         );
       }),

@@ -34,6 +34,20 @@ class ServerStorageResult {
   final File metadataFile;
 }
 
+class ServerLaunchConfig {
+  const ServerLaunchConfig({
+    required this.serverDirectory,
+    required this.jarFilePath,
+    required this.maxRamMb,
+    required this.metadataFile,
+  });
+
+  final Directory serverDirectory;
+  final String jarFilePath;
+  final int maxRamMb;
+  final File metadataFile;
+}
+
 class ServerStorageService {
   const ServerStorageService();
 
@@ -153,6 +167,66 @@ class ServerStorageService {
     }
   }
 
+  Future<ServerLaunchConfig> prepareServerLaunch({
+    required String serverPath,
+    required String memoryLabel,
+  }) async {
+    try {
+      final Directory serverDirectory = Directory(serverPath);
+      if (!await serverDirectory.exists()) {
+        throw const ServerStorageException(
+          'The selected server directory no longer exists.',
+        );
+      }
+
+      final File metadataFile = File(
+        path.join(serverDirectory.path, 'bifrost_server.json'),
+      );
+      if (!await metadataFile.exists()) {
+        throw const ServerStorageException(
+          'bifrost_server.json is missing for this server.',
+        );
+      }
+
+      final Map<String, dynamic> metadata =
+          jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
+      final Map<String, dynamic>? download =
+          metadata['download'] as Map<String, dynamic>?;
+      final String? jarFilePath = download?['path'] as String?;
+
+      if (jarFilePath == null || jarFilePath.trim().isEmpty) {
+        throw const ServerStorageException(
+          'No downloaded server jar is registered for this server yet.',
+        );
+      }
+
+      final File jarFile = File(jarFilePath);
+      if (!await jarFile.exists()) {
+        throw ServerStorageException(
+          'The configured server jar was not found at $jarFilePath.',
+        );
+      }
+
+      final File eulaFile = File(path.join(serverDirectory.path, 'eula.txt'));
+      await eulaFile.writeAsString('eula=true\n');
+
+      return ServerLaunchConfig(
+        serverDirectory: serverDirectory,
+        jarFilePath: jarFile.path,
+        maxRamMb: _parseMemoryLabelToMb(memoryLabel),
+        metadataFile: metadataFile,
+      );
+    } on ServerStorageException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to prepare server launch at ${error.path ?? serverPath}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to prepare the server launch: $error');
+    }
+  }
+
   Future<String> _resolveBaseDirectoryPath() async {
     if (Platform.isAndroid) {
       final Directory? externalDirectory = await getExternalStorageDirectory();
@@ -222,5 +296,22 @@ class ServerStorageService {
       'view-distance=10',
       'simulation-distance=10',
     ].join('\n');
+  }
+
+  int _parseMemoryLabelToMb(String memoryLabel) {
+    final RegExpMatch? match = RegExp(
+      r'([0-9]+(?:\.[0-9]+)?)\s*(GB|MB)',
+      caseSensitive: false,
+    ).firstMatch(memoryLabel.trim());
+
+    if (match == null) {
+      return 2048;
+    }
+
+    final double value = double.tryParse(match.group(1) ?? '') ?? 2.0;
+    final String unit = (match.group(2) ?? 'GB').toUpperCase();
+
+    final int mb = unit == 'GB' ? (value * 1024).round() : value.round();
+    return mb < 512 ? 512 : mb;
   }
 }

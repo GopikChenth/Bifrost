@@ -1,4 +1,5 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "S:/Web Projects/bifrost/linux"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "cmake.sourceDirectory": "S:/Web Projects/bifrost/linux",
+  "java.compile.nullAnalysis.mode": "automatic"
 }

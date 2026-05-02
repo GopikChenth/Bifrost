@@ -10,13 +10,14 @@ class ServerCard extends StatelessWidget {
     required this.serverType,
     required this.statusLabel,
     required this.memoryLabel,
-    this.runtimeMessage,
     this.serverPath,
     this.onDelete,
-    this.onStart,
-    this.onStop,
+    this.onTestRuntime,
+    this.onStartServer,
     this.isBusy = false,
     this.isOnline = false,
+    this.consoleLabel = 'Ready',
+    this.runtimeMessage,
   });
 
   final String name;
@@ -24,13 +25,14 @@ class ServerCard extends StatelessWidget {
   final String serverType;
   final String statusLabel;
   final String memoryLabel;
-  final String? runtimeMessage;
   final String? serverPath;
   final VoidCallback? onDelete;
-  final VoidCallback? onStart;
-  final VoidCallback? onStop;
+  final VoidCallback? onTestRuntime;
+  final VoidCallback? onStartServer;
   final bool isBusy;
   final bool isOnline;
+  final String consoleLabel;
+  final String? runtimeMessage;
 
   static const FileManagerService _fileManagerService = FileManagerService();
 
@@ -155,24 +157,6 @@ class ServerCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (runtimeMessage != null && runtimeMessage!.trim().isNotEmpty) ...<Widget>[
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colors.errorContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  runtimeMessage!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onErrorContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 18),
             Row(
               children: <Widget>[
@@ -188,31 +172,46 @@ class ServerCard extends StatelessWidget {
                   child: _ServerMetric(
                     icon: Icons.terminal_rounded,
                     label: 'Console',
-                    value: 'Ready',
+                    value: consoleLabel,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Row(
               children: <Widget>[
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: isBusy ? null : onStart,
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Start'),
-                  ),
+                FilledButton.tonalIcon(
+                  onPressed: isBusy ? null : onStartServer,
+                  icon: const Icon(Icons.rocket_launch_rounded),
+                  label: const Text('Start Server'),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: isBusy ? null : onStop,
-                    icon: const Icon(Icons.stop_rounded),
-                    label: const Text('Stop'),
-                  ),
+                const SizedBox(width: 10),
+                FilledButton.tonalIcon(
+                  onPressed: isBusy ? null : onTestRuntime,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Test Runtime'),
                 ),
               ],
             ),
+            if (runtimeMessage != null && runtimeMessage!.trim().isNotEmpty) ...<
+              Widget
+            >[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  runtimeMessage!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
