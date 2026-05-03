@@ -95,4 +95,18 @@ class LocalRuntimeService {
       );
     }
   }
+
+  Future<LocalServerStatus> stopServer() async {
+    try {
+      final Map<Object?, Object?>? result =
+          await _channel.invokeMapMethod<Object?, Object?>('stopServer');
+      return LocalServerStatus.fromMap(
+        result ?? <Object?, Object?>{},
+      );
+    } on PlatformException catch (error) {
+      throw LocalRuntimeServiceException(
+        error.message ?? 'Unable to stop the local server runtime.',
+      );
+    }
+  }
 }

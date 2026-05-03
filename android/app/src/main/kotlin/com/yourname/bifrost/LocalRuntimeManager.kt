@@ -13,8 +13,10 @@ import java.util.concurrent.atomic.AtomicReference
 class LocalRuntimeManager(
     private val context: Context,
 ) {
+    private val bundledRuntimeVersion = "internal-21-2026-05-03"
     private val runtimeRoot: File = File(context.filesDir, "runtimes")
     private val runtimeHome: File = File(runtimeRoot, "Internal-21")
+    private val runtimeMarkerFile: File = File(runtimeHome, "runtime.version")
     private val tag = "bifrost-local-runtime"
     @Volatile
     private var launchThread: Thread? = null
@@ -22,6 +24,10 @@ class LocalRuntimeManager(
     private var activeServerPath: String? = null
     @Volatile
     private var lastExitCode: Int? = null
+    @Volatile
+    private var stopRequested = false
+    @Volatile
+    private var runtimeInitialized = false
     private val serverState = AtomicReference("idle")
     private val lastMessage = AtomicReference<String?>(null)
 
@@ -41,6 +47,7 @@ class LocalRuntimeManager(
     }
 
     @Throws(IOException::class)
+    @Synchronized
     fun prepareBundledRuntimeHome() {
         if (!runtimeRoot.exists() && !runtimeRoot.mkdirs()) {
             throw IOException("Unable to create runtime root at ${runtimeRoot.absolutePath}")
@@ -52,11 +59,20 @@ class LocalRuntimeManager(
             "lib/server/libjvm.so",
         )
 
-        if (requiredFiles.all { File(runtimeHome, it).exists() }) {
+        val markerMatches =
+            runtimeMarkerFile.exists() &&
+                runtimeMarkerFile.readText().trim() == bundledRuntimeVersion
+        if (markerMatches && requiredFiles.all { File(runtimeHome, it).exists() }) {
             return
         }
 
+        runtimeInitialized = false
+        if (runtimeHome.exists() && !runtimeHome.deleteRecursively()) {
+            throw IOException("Unable to replace runtime home at ${runtimeHome.absolutePath}")
+        }
+
         copyAssetDirectory(context.assets, "jre-home", runtimeHome)
+        runtimeMarkerFile.writeText("$bundledRuntimeVersion\n")
     }
 
     fun runJavaVersion(workingDirectory: String?): Int {
@@ -72,6 +88,7 @@ class LocalRuntimeManager(
                 "-Djava.io.tmpdir=${context.cacheDir.absolutePath}",
                 "-Duser.dir=$launchDirectory",
                 "-Duser.language=${System.getProperty("user.language") ?: "en"}",
+                "-Djava.awt.headless=true",
                 "-Dos.name=Linux",
                 "-Dos.version=Android-${Build.VERSION.RELEASE}",
                 "-Djdk.lang.Process.launchMechanism=FORK",
@@ -95,6 +112,7 @@ class LocalRuntimeManager(
 
         activeServerPath = serverPath
         lastExitCode = null
+        stopRequested = false
         serverState.set("starting")
         lastMessage.set("Preparing the local runtime.")
 
@@ -104,7 +122,7 @@ class LocalRuntimeManager(
                 prepareEnvironment(serverPath)
                 initializeJvmRuntime()
 
-                serverState.set("running")
+                serverState.set("starting")
                 lastMessage.set("Launching $jarPath")
 
                 val safeMaxRam = computeSafeMaxRam(maxRamMb)
@@ -118,6 +136,7 @@ class LocalRuntimeManager(
                         "-Djava.io.tmpdir=${context.cacheDir.absolutePath}",
                         "-Duser.dir=$serverPath",
                         "-Duser.language=${System.getProperty("user.language") ?: "en"}",
+                        "-Djava.awt.headless=true",
                         "-Dos.name=Linux",
                         "-Dos.version=Android-${Build.VERSION.RELEASE}",
                         "-Djdk.lang.Process.launchMechanism=FORK",
@@ -130,11 +149,21 @@ class LocalRuntimeManager(
                 )
 
                 lastExitCode = exitCode
-                serverState.set(if (exitCode == 0) "stopped" else "error")
-                lastMessage.set("Server exited with code $exitCode.")
+                if (stopRequested) {
+                    serverState.set("stopped")
+                    lastMessage.set("Server stopped.")
+                } else {
+                    serverState.set(if (exitCode == 0) "stopped" else "error")
+                    lastMessage.set("Server exited with code $exitCode.")
+                }
             } catch (error: Throwable) {
-                serverState.set("error")
-                lastMessage.set(error.localizedMessage ?: "Local server launch failed.")
+                if (stopRequested) {
+                    serverState.set("stopped")
+                    lastMessage.set("Server stopped.")
+                } else {
+                    serverState.set("error")
+                    lastMessage.set(error.localizedMessage ?: "Local server launch failed.")
+                }
             } finally {
                 launchThread = null
             }
@@ -146,7 +175,58 @@ class LocalRuntimeManager(
         return getServerStatus()
     }
 
+    @Synchronized
+    fun stopServer(): Map<String, Any?> {
+        val thread = launchThread
+        if (thread == null || !thread.isAlive) {
+            serverState.set("stopped")
+            lastMessage.set("No active server process is running.")
+            return getServerStatus()
+        }
+
+        stopRequested = true
+        serverState.set("stopping")
+        lastMessage.set("Sending graceful stop command to the local server.")
+
+        val stopResult = LocalJvmBridge.stopJVM()
+        if (stopResult < 0) {
+            serverState.set("error")
+            lastMessage.set("Unable to send graceful stop command to the local server.")
+            return getServerStatus()
+        }
+
+        Thread {
+            try {
+                Thread.sleep(15000)
+                val activeThread = launchThread
+                if (stopRequested && activeThread != null && activeThread.isAlive) {
+                    LocalJvmBridge.terminateJVM()
+                    lastMessage.set("Server did not stop gracefully, sending SIGTERM.")
+                }
+
+                Thread.sleep(4000)
+                val stillActiveThread = launchThread
+                if (stopRequested && stillActiveThread != null && stillActiveThread.isAlive) {
+                    LocalJvmBridge.forceStopJVM()
+                    lastMessage.set("Server did not stop after SIGTERM, forcing shutdown.")
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }.apply {
+            name = "bifrost-local-server-force-stop"
+            start()
+        }
+
+        return getServerStatus()
+    }
+
     fun getServerStatus(): Map<String, Any?> {
+        if (serverState.get() == "starting" && LocalJvmBridge.isJVMReady()) {
+            serverState.set("running")
+            lastMessage.set("Minecraft server is online.")
+        }
+
         return mapOf(
             "state" to serverState.get(),
             "activeServerPath" to activeServerPath,
@@ -197,7 +277,13 @@ class LocalRuntimeManager(
         LocalJvmBridge.chdir(directory)
     }
 
+    @Synchronized
     private fun initializeJvmRuntime() {
+        if (runtimeInitialized) {
+            Log.d(tag, "Runtime native libraries already initialized")
+            return
+        }
+
         val libDir = resolveRuntimeLibDir(runtimeHome)
         val coreLibsToLoad = listOf(
             File(libDir, "libjli.so").absolutePath,
@@ -207,10 +293,6 @@ class LocalRuntimeManager(
             File(libDir, "libnet.so").absolutePath,
             File(libDir, "libnio.so").absolutePath,
             File(libDir, "libzip.so").absolutePath,
-            File(libDir, "libfreetype.so").absolutePath,
-            File(libDir, "libawt.so").absolutePath,
-            File(libDir, "libawt_headless.so").absolutePath,
-            File(libDir, "libfontmanager.so").absolutePath,
         )
 
         for (libPath in coreLibsToLoad) {
@@ -244,6 +326,8 @@ class LocalRuntimeManager(
         for (libPath in remainingLibs) {
             Log.w(tag, "Leaving runtime library unloaded: $libPath")
         }
+
+        runtimeInitialized = true
     }
 
     private fun resolveRuntimeLibDir(home: File): File {
@@ -261,6 +345,7 @@ class LocalRuntimeManager(
             .filter { file ->
                 file.isFile &&
                     file.extension == "so" &&
+                    !isGraphicsRuntimeLibrary(file.name) &&
                     !file.name.startsWith("libjsig")
             }
             .map { it.absolutePath }
@@ -278,12 +363,21 @@ class LocalRuntimeManager(
             "libnet.so" -> 4
             "libnio.so" -> 5
             "libzip.so" -> 6
-            "libfreetype.so" -> 7
-            "libawt.so" -> 8
-            "libawt_headless.so" -> 9
-            "libfontmanager.so" -> 10
             else -> 100
         }
+    }
+
+    private fun isGraphicsRuntimeLibrary(fileName: String): Boolean {
+        return fileName in setOf(
+            "libawt.so",
+            "libawt_headless.so",
+            "libfontmanager.so",
+            "libfreetype.so",
+            "libjawt.so",
+            "libjavajpeg.so",
+            "liblcms.so",
+            "libmlib_image.so",
+        )
     }
 
     @Throws(IOException::class)

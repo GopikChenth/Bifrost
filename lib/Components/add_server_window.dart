@@ -108,7 +108,10 @@ class _AddServerWindowState extends State<AddServerWindow> {
     Navigator.of(context).pop();
   }
 
-  Future<void> _loadVersionsForType(String serverType) async {
+  Future<void> _loadVersionsForType(
+    String serverType, {
+    bool forceRefresh = false,
+  }) async {
     setState(() {
       _selectedType = serverType;
       _selectedVersion = null;
@@ -122,6 +125,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
     try {
       final List<String> versions = await _downloadService.getAvailableVersions(
         serverType,
+        forceRefresh: forceRefresh,
       );
 
       if (!mounted) {
@@ -310,6 +314,24 @@ class _AddServerWindowState extends State<AddServerWindow> {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.error,
                     ),
+                  ),
+                ),
+              ],
+              if (_selectedType != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _loadingVersions
+                        ? null
+                        : () {
+                            _loadVersionsForType(
+                              _selectedType!,
+                              forceRefresh: true,
+                            );
+                          },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Refresh versions'),
                   ),
                 ),
               ],

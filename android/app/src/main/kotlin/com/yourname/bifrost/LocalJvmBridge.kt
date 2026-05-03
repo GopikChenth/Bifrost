@@ -7,6 +7,14 @@ object LocalJvmBridge {
 
     external fun launchJVM(args: Array<String>): Int
 
+    external fun stopJVM(): Int
+
+    external fun terminateJVM(): Int
+
+    external fun forceStopJVM(): Int
+
+    external fun isJVMReady(): Boolean
+
     external fun setLdLibraryPath(ldLibraryPath: String)
 
     external fun dlopen(name: String): Boolean

@@ -43,12 +43,26 @@ typedef jint JLI_Launch_func(
     jint ergo
 );
 
+static volatile sig_atomic_t active_jvm_pid = -1;
+static volatile sig_atomic_t active_jvm_stdin_fd = -1;
+static volatile sig_atomic_t active_jvm_ready = 0;
+
 /* ──────────────────────────────────────────────────────────────────
  * Pipe-based log reader
  *
  * Reads from a pipe fd and forwards each line to Android logcat.
  * Used to capture the JVM child process's stdout/stderr.
  * ────────────────────────────────────────────────────────────────── */
+
+static void inspect_jvm_log_line(const char* line) {
+    if (line == NULL) {
+        return;
+    }
+
+    if (strstr(line, "Done (") != NULL && strstr(line, "For help") != NULL) {
+        active_jvm_ready = 1;
+    }
+}
 
 static void* jvm_log_reader(void* arg) {
     int fd = *((int*) arg);
@@ -63,11 +77,13 @@ static void* jvm_log_reader(void* arg) {
         while ((newline = strchr(line, '\n')) != NULL) {
             *newline = '\0';
             if (line[0] != '\0') {
+                inspect_jvm_log_line(line);
                 __android_log_print(ANDROID_LOG_INFO, "bifrost-jvm", "%s", line);
             }
             line = newline + 1;
         }
         if (line[0] != '\0') {
+            inspect_jvm_log_line(line);
             __android_log_print(ANDROID_LOG_INFO, "bifrost-jvm", "%s", line);
         }
     }
@@ -185,20 +201,33 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
         LOGD("  argv[%d]=%s", i, argv[i]);
     }
 
-    /* Create a pipe to capture the child's stdout + stderr */
+    /* Create pipes for child stdin and stdout/stderr */
+    int input_pipe[2];
+    if (pipe(input_pipe) != 0) {
+        LOGE("stdin pipe() failed: %s", strerror(errno));
+        for (int i = 0; i < argc; i++) free(argv[i]);
+        free(argv);
+        return -1;
+    }
+
     int output_pipe[2];
     if (pipe(output_pipe) != 0) {
-        LOGE("pipe() failed: %s", strerror(errno));
+        LOGE("stdout pipe() failed: %s", strerror(errno));
+        close(input_pipe[0]);
+        close(input_pipe[1]);
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
         return -1;
     }
 
     LOGD("Forking child process for JVM");
+    active_jvm_ready = 0;
     pid_t pid = fork();
 
     if (pid < 0) {
         LOGE("fork() failed: %s", strerror(errno));
+        close(input_pipe[0]);
+        close(input_pipe[1]);
         close(output_pipe[0]);
         close(output_pipe[1]);
         for (int i = 0; i < argc; i++) free(argv[i]);
@@ -208,7 +237,11 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
 
     if (pid == 0) {
         /* ───── CHILD PROCESS ───── */
+        close(input_pipe[1]); /* close stdin write end */
         close(output_pipe[0]); /* close read end */
+
+        dup2(input_pipe[0], STDIN_FILENO);
+        close(input_pipe[0]);
 
         /* Redirect stdout and stderr to the pipe */
         dup2(output_pipe[1], STDOUT_FILENO);
@@ -227,6 +260,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     }
 
     /* ───── PARENT PROCESS ───── */
+    close(input_pipe[0]); /* close child stdin read end */
     close(output_pipe[1]); /* close write end */
 
     /* Start a background thread to read the child's output and
@@ -234,9 +268,17 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     start_log_reader(output_pipe[0]);
 
     LOGD("Waiting for JVM child process (pid=%d)", pid);
+    active_jvm_pid = pid;
+    active_jvm_stdin_fd = input_pipe[1];
 
     int status = 0;
     waitpid(pid, &status, 0);
+    active_jvm_pid = -1;
+    active_jvm_ready = 0;
+    if (active_jvm_stdin_fd >= 0) {
+        close((int) active_jvm_stdin_fd);
+        active_jvm_stdin_fd = -1;
+    }
 
     jint exit_code;
     if (WIFEXITED(status)) {
@@ -256,4 +298,85 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     free(argv);
 
     return exit_code;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+    return active_jvm_ready == 1 ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_stopJVM(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+
+    int fd = (int) active_jvm_stdin_fd;
+    if (fd < 0) {
+        LOGD("stopJVM requested but no active JVM stdin pipe is registered");
+        return 0;
+    }
+
+    const char* command = "stop\n";
+    ssize_t written = write(fd, command, strlen(command));
+    if (written < 0) {
+        LOGE("Writing graceful stop command failed: %s", strerror(errno));
+        return -1;
+    }
+
+    LOGD("Graceful stop command written to JVM child stdin");
+    return 1;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_terminateJVM(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+
+    pid_t pid = (pid_t) active_jvm_pid;
+    if (pid <= 0) {
+        LOGD("terminateJVM requested but no active JVM child is registered");
+        return 0;
+    }
+
+    if (kill(pid, SIGTERM) != 0) {
+        LOGE("SIGTERM failed for JVM child pid=%d: %s", pid, strerror(errno));
+        return -1;
+    }
+
+    LOGD("SIGTERM sent to JVM child pid=%d", pid);
+    return 1;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_forceStopJVM(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+
+    pid_t pid = (pid_t) active_jvm_pid;
+    if (pid <= 0) {
+        LOGD("forceStopJVM requested but no active JVM child is registered");
+        return 0;
+    }
+
+    if (kill(pid, SIGKILL) != 0) {
+        LOGE("SIGKILL failed for JVM child pid=%d: %s", pid, strerror(errno));
+        return -1;
+    }
+
+    LOGD("SIGKILL sent to JVM child pid=%d", pid);
+    return 1;
 }

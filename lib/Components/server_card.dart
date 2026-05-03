@@ -14,6 +14,7 @@ class ServerCard extends StatelessWidget {
     this.onDelete,
     this.onTestRuntime,
     this.onStartServer,
+    this.onStopServer,
     this.isBusy = false,
     this.isOnline = false,
     this.consoleLabel = 'Ready',
@@ -29,6 +30,7 @@ class ServerCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onTestRuntime;
   final VoidCallback? onStartServer;
+  final VoidCallback? onStopServer;
   final bool isBusy;
   final bool isOnline;
   final String consoleLabel;
@@ -178,14 +180,24 @@ class ServerCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            Row(
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
               children: <Widget>[
                 FilledButton.tonalIcon(
-                  onPressed: isBusy ? null : onStartServer,
+                  onPressed: isBusy || isOnline ? null : onStartServer,
                   icon: const Icon(Icons.rocket_launch_rounded),
                   label: const Text('Start Server'),
                 ),
-                const SizedBox(width: 10),
+                FilledButton.tonalIcon(
+                  onPressed: isOnline ? onStopServer : null,
+                  icon: const Icon(Icons.stop_circle_rounded),
+                  label: const Text('Stop Server'),
+                  style: FilledButton.styleFrom(
+                    foregroundColor: colors.onErrorContainer,
+                    backgroundColor: colors.errorContainer,
+                  ),
+                ),
                 FilledButton.tonalIcon(
                   onPressed: isBusy ? null : onTestRuntime,
                   icon: const Icon(Icons.play_arrow_rounded),

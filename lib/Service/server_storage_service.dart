@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bifrost/Components/add_server_window.dart';
+import 'package:bifrost/Services/storage_access_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
@@ -23,6 +25,9 @@ class ServerStorageResult {
     required this.backupsDirectory,
     required this.propertiesFile,
     required this.metadataFile,
+    this.serverUri,
+    this.jarsUri,
+    this.metadataUri,
   });
 
   final Directory serverDirectory;
@@ -32,6 +37,9 @@ class ServerStorageResult {
   final Directory backupsDirectory;
   final File propertiesFile;
   final File metadataFile;
+  final String? serverUri;
+  final String? jarsUri;
+  final String? metadataUri;
 }
 
 class ServerLaunchConfig {
@@ -49,13 +57,35 @@ class ServerLaunchConfig {
 }
 
 class ServerStorageService {
-  const ServerStorageService();
+  const ServerStorageService({
+    SettingsRepository settingsRepository = const SettingsRepository(),
+    StorageAccessService storageAccessService = const StorageAccessService(),
+  }) : _settingsRepository = settingsRepository,
+       _storageAccessService = storageAccessService;
+
+  final SettingsRepository _settingsRepository;
+  final StorageAccessService _storageAccessService;
 
   Future<ServerStorageResult> createServerStructure(
     AddServerResult server,
   ) async {
     try {
-      final String baseDirectoryPath = await _resolveBaseDirectoryPath();
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings)) {
+        final Map<String, Object?> result = await _storageAccessService
+            .createServerStructure(
+              treeUri: settings.customDirectoryUri,
+              serverName: server.name,
+              version: server.version,
+              serverType: server.serverType,
+              memoryLabel: server.memoryLabel,
+              serverProperties: _buildServerProperties(server),
+            );
+        return _storageResultFromMap(result);
+      }
+
+      final String baseDirectoryPath = await resolveBaseDirectoryPath();
       final Directory baseDirectory = Directory(baseDirectoryPath);
       await baseDirectory.create(recursive: true);
       await _validateWritableBaseDirectory(baseDirectory);
@@ -127,11 +157,99 @@ class ServerStorageService {
     }
   }
 
+  Future<List<Map<String, Object>>> loadStoredServers() async {
+    try {
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings)) {
+        final List<Map<String, Object?>> rawServers =
+            await _storageAccessService.loadStoredServers(
+              treeUri: settings.customDirectoryUri,
+            );
+        return rawServers.map(_serverMapFromRaw).toList();
+      }
+
+      final Directory baseDirectory = Directory(await resolveBaseDirectoryPath());
+      if (!await baseDirectory.exists()) {
+        return <Map<String, Object>>[];
+      }
+
+      final List<Map<String, Object>> servers = <Map<String, Object>>[];
+      await for (final FileSystemEntity entity in baseDirectory.list()) {
+        if (entity is! Directory) {
+          continue;
+        }
+
+        final File metadataFile = File(
+          path.join(entity.path, 'bifrost_server.json'),
+        );
+        if (!await metadataFile.exists()) {
+          continue;
+        }
+
+        try {
+          final Map<String, dynamic> metadata =
+              jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
+          final Map<String, dynamic>? paths = metadata['paths'] as Map<String, dynamic>?;
+
+          servers.add(<String, Object>{
+            'name': (metadata['name'] as String?)?.trim().isNotEmpty == true
+                ? metadata['name'] as String
+                : path.basename(entity.path),
+            'version': (metadata['version'] as String?) ?? 'Unknown',
+            'type': (metadata['type'] as String?) ?? 'Unknown',
+            'status': 'Offline',
+            'memory': (metadata['allocatedRam'] as String?) ?? '2.0 GB',
+            'isOnline': false,
+            'path': (paths?['root'] as String?) ?? entity.path,
+          });
+        } catch (_) {
+          continue;
+        }
+      }
+
+      servers.sort((Map<String, Object> a, Map<String, Object> b) {
+        return (a['name'] as String).toLowerCase().compareTo(
+          (b['name'] as String).toLowerCase(),
+        );
+      });
+      return servers;
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to read stored servers at ${error.path ?? 'the server directory'}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to load stored servers: $error');
+    }
+  }
+
+  Future<String> resolveBaseDirectoryPath() async {
+    final ServerDirectorySettings settings =
+        await _settingsRepository.loadServerDirectorySettings();
+    if (!settings.useDefaultDirectory) {
+      final String customDirectoryPath = settings.customDirectoryPath.trim();
+      if (customDirectoryPath.isNotEmpty &&
+          _isDirectFilesystemPath(customDirectoryPath)) {
+        return path.join(customDirectoryPath, 'minecraft');
+      }
+    }
+
+    return _resolveDefaultBaseDirectoryPath();
+  }
+
   Future<void> writeDownloadMetadata({
     required ServerStorageResult storage,
     required Map<String, Object?> downloadMetadata,
   }) async {
     try {
+      if (storage.metadataUri != null) {
+        await _storageAccessService.writeDownloadMetadata(
+          metadataUri: storage.metadataUri!,
+          downloadMetadata: downloadMetadata,
+        );
+        return;
+      }
+
       final Map<String, dynamic> currentMetadata =
           jsonDecode(await storage.metadataFile.readAsString())
               as Map<String, dynamic>;
@@ -150,14 +268,50 @@ class ServerStorageService {
     }
   }
 
-  Future<void> deleteServerDirectory(String serverPath) async {
+  Future<void> deleteServerDirectory(
+    String serverPath, {
+    String? serverUri,
+  }) async {
     try {
-      final Directory serverDirectory = Directory(serverPath);
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings)) {
+        await _storageAccessService.deleteServerDirectory(
+          treeUri: settings.customDirectoryUri,
+          serverUri: serverUri?.trim().isNotEmpty == true ? serverUri : null,
+          serverPath: serverPath,
+        );
+        return;
+      }
+
+      Directory serverDirectory = Directory(serverPath);
+      if (!await serverDirectory.exists()) {
+        final File metadataFile = File(
+          path.join(serverPath, 'bifrost_server.json'),
+        );
+        if (await metadataFile.exists()) {
+          final Map<String, dynamic> metadata =
+              jsonDecode(await metadataFile.readAsString())
+                  as Map<String, dynamic>;
+          final Map<String, dynamic>? paths =
+              metadata['paths'] as Map<String, dynamic>?;
+          final String? rootPath = paths?['root'] as String?;
+          if (rootPath != null && rootPath.trim().isNotEmpty) {
+            serverDirectory = Directory(rootPath);
+          }
+        }
+      }
+
       if (!await serverDirectory.exists()) {
         return;
       }
 
       await serverDirectory.delete(recursive: true);
+      if (await serverDirectory.exists()) {
+        throw ServerStorageException(
+          'Server files still exist at ${serverDirectory.path} after deletion.',
+        );
+      }
     } on FileSystemException catch (error) {
       throw ServerStorageException(
         'Unable to delete server files at ${error.path ?? serverPath}: ${error.message}',
@@ -170,8 +324,56 @@ class ServerStorageService {
   Future<ServerLaunchConfig> prepareServerLaunch({
     required String serverPath,
     required String memoryLabel,
+    String? serverUri,
   }) async {
     try {
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings) &&
+          serverUri != null &&
+          serverUri.trim().isNotEmpty) {
+        final Map<String, Object?> launchResult =
+            await _storageAccessService.prepareServerLaunch(
+              serverUri: serverUri,
+            );
+        final String safServerPath =
+            (launchResult['serverPath'] as String?)?.trim().isNotEmpty == true
+            ? launchResult['serverPath'] as String
+            : serverPath;
+        final String safJarFilePath =
+            ((launchResult['jarPath'] as String?) ?? '').trim();
+
+        if (safJarFilePath.isEmpty) {
+          throw const ServerStorageException(
+            'No downloaded server jar is registered for this server yet.',
+          );
+        }
+
+        final String mirrorPath = await _resolveRuntimeMirrorPath(safServerPath);
+        final Map<String, Object?> mirroredLaunch =
+            await _storageAccessService.copyServerToDirectory(
+              serverUri: serverUri,
+              destinationPath: mirrorPath,
+            );
+        final String resolvedServerPath =
+            ((mirroredLaunch['serverPath'] as String?) ?? mirrorPath).trim();
+        final String jarFilePath =
+            ((mirroredLaunch['jarPath'] as String?) ?? '').trim();
+
+        if (jarFilePath.isEmpty || !await File(jarFilePath).exists()) {
+          throw ServerStorageException(
+            'The server jar could not be prepared in app storage for launch.',
+          );
+        }
+
+        return ServerLaunchConfig(
+          serverDirectory: Directory(resolvedServerPath),
+          jarFilePath: jarFilePath,
+          maxRamMb: _parseMemoryLabelToMb(memoryLabel),
+          metadataFile: File(path.join(resolvedServerPath, 'bifrost_server.json')),
+        );
+      }
+
       final Directory serverDirectory = Directory(serverPath);
       if (!await serverDirectory.exists()) {
         throw const ServerStorageException(
@@ -227,7 +429,39 @@ class ServerStorageService {
     }
   }
 
-  Future<String> _resolveBaseDirectoryPath() async {
+  Future<void> syncRuntimeMirrorToServer({
+    required String serverPath,
+    String? serverUri,
+  }) async {
+    try {
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (!_usesCustomTreeStorage(settings) ||
+          serverUri == null ||
+          serverUri.trim().isEmpty) {
+        return;
+      }
+
+      final String mirrorPath = await _resolveRuntimeMirrorPath(serverPath);
+      final Directory mirrorDirectory = Directory(mirrorPath);
+      if (!await mirrorDirectory.exists()) {
+        return;
+      }
+
+      await _storageAccessService.syncDirectoryToServer(
+        serverUri: serverUri,
+        sourcePath: mirrorPath,
+      );
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to sync server files from ${error.path ?? serverPath}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to sync server files: $error');
+    }
+  }
+
+  Future<String> _resolveDefaultBaseDirectoryPath() async {
     if (Platform.isAndroid) {
       final Directory? externalDirectory = await getExternalStorageDirectory();
       if (externalDirectory != null) {
@@ -251,9 +485,73 @@ class ServerStorageService {
       }
     } on FileSystemException {
       throw ServerStorageException(
-        'Bifrost cannot write to ${baseDirectory.path}. On Android, some folder-picker locations are not writable through direct file paths. Use default app storage or choose a folder your app can write to.',
+        'Bifrost cannot write to ${baseDirectory.path}. Choose a direct writable filesystem path or use default app storage.',
       );
     }
+  }
+
+  Future<String> _resolveRuntimeMirrorPath(String serverPath) async {
+    final Directory appDirectory = await getApplicationSupportDirectory();
+    final String serverSlug = _slugify(path.basename(serverPath));
+    return path.join(appDirectory.path, 'minecraft-runtime', serverSlug);
+  }
+
+  bool _isDirectFilesystemPath(String directoryPath) {
+    if (directoryPath.startsWith('content://')) {
+      return false;
+    }
+
+    if (Platform.isAndroid) {
+      return directoryPath.startsWith('/storage/') ||
+          directoryPath.startsWith('/sdcard/') ||
+          directoryPath.startsWith('/data/');
+    }
+
+    return path.isAbsolute(directoryPath);
+  }
+
+  bool _usesCustomTreeStorage(ServerDirectorySettings settings) {
+    return !settings.useDefaultDirectory &&
+        settings.customDirectoryUri.trim().isNotEmpty;
+  }
+
+  ServerStorageResult _storageResultFromMap(Map<String, Object?> result) {
+    final String serverPath = (result['serverPath'] as String?) ?? '';
+    final String worldPath = (result['worldPath'] as String?) ?? '';
+    final String jarsPath = (result['jarsPath'] as String?) ?? '';
+    final String modsPath = (result['modsPath'] as String?) ?? '';
+    final String backupsPath = (result['backupsPath'] as String?) ?? '';
+    final String propertiesPath = (result['propertiesPath'] as String?) ?? '';
+    final String metadataPath = (result['metadataPath'] as String?) ?? '';
+
+    return ServerStorageResult(
+      serverDirectory: Directory(serverPath),
+      worldDirectory: Directory(worldPath),
+      jarsDirectory: Directory(jarsPath),
+      modsDirectory: Directory(modsPath),
+      backupsDirectory: Directory(backupsPath),
+      propertiesFile: File(propertiesPath),
+      metadataFile: File(metadataPath),
+      serverUri: result['serverUri'] as String?,
+      jarsUri: result['jarsUri'] as String?,
+      metadataUri: result['metadataUri'] as String?,
+    );
+  }
+
+  Map<String, Object> _serverMapFromRaw(Map<String, Object?> server) {
+    return <String, Object>{
+      'name': (server['name'] as String?) ?? 'Unknown',
+      'version': (server['version'] as String?) ?? 'Unknown',
+      'type': (server['type'] as String?) ?? 'Unknown',
+      'status': 'Offline',
+      'memory': (server['memory'] as String?) ?? '2.0 GB',
+      'isOnline': false,
+      'path': (server['path'] as String?) ?? '',
+      if (server['serverUri'] != null) 'serverUri': server['serverUri'] as String,
+      if (server['metadataUri'] != null)
+        'metadataUri': server['metadataUri'] as String,
+      if (server['jarsUri'] != null) 'jarsUri': server['jarsUri'] as String,
+    };
   }
 
   Future<Directory> _createUniqueServerDirectory(

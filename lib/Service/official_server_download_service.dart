@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bifrost/Components/add_server_window.dart';
+import 'package:bifrost/Services/storage_access_service.dart';
 import 'package:bifrost/Utils/jar_downloader.dart';
 import 'package:bifrost/Service/server_storage_service.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OfficialServerDownloadException implements Exception {
   const OfficialServerDownloadException(this.message);
@@ -50,19 +53,28 @@ class OfficialServerDownloadResult {
 class OfficialServerDownloadService {
   const OfficialServerDownloadService({
     this.jarDownloader = const JarDownloader(),
+    this.storageAccessService = const StorageAccessService(),
   });
 
   static const String _paperUserAgent =
       'bifrost/1.0.0 (https://github.com/GopikChenth/Bifrost)';
+  static const Duration _versionCacheTtl = Duration(days: 1);
+  static const String _paperVersionsCacheKey = 'paper_stable_versions_cache';
+  static const String _paperVersionsCacheTimestampKey =
+      'paper_stable_versions_cache_timestamp';
 
   final JarDownloader jarDownloader;
+  final StorageAccessService storageAccessService;
 
-  Future<List<String>> getAvailableVersions(String serverType) async {
+  Future<List<String>> getAvailableVersions(
+    String serverType, {
+    bool forceRefresh = false,
+  }) async {
     switch (serverType.toLowerCase()) {
       case 'vanilla':
         return _getVanillaVersions();
       case 'paper':
-        return _getPaperStableVersions();
+        return _getPaperStableVersions(forceRefresh: forceRefresh);
       default:
         return <String>[];
     }
@@ -87,6 +99,48 @@ class OfficialServerDownloadService {
     JarDownloadProgress? onProgress,
   }) async {
     try {
+      if (storage.jarsUri != null) {
+        final Directory temporaryDirectory = await getTemporaryDirectory();
+        final String temporaryPath = path.join(
+          temporaryDirectory.path,
+          'bifrost-downloads',
+          '${DateTime.now().microsecondsSinceEpoch}-${artifact.fileName}',
+        );
+
+        final JarDownloadResult download = await jarDownloader.downloadJar(
+          sourceUrl: artifact.downloadUrl,
+          destinationPath: temporaryPath,
+          onProgress: onProgress,
+          headers: artifact.projectName == 'paper'
+              ? <String, String>{'User-Agent': _paperUserAgent}
+              : null,
+        );
+
+        try {
+          final Map<String, Object?> downloadResult =
+              await storageAccessService.copyFileToDirectory(
+                directoryUri: storage.jarsUri!,
+                fileName: artifact.fileName,
+                sourcePath: download.file.path,
+              );
+          final String destinationPath =
+              (downloadResult['path'] as String?)?.trim().isNotEmpty == true
+              ? downloadResult['path'] as String
+              : path.join(storage.jarsDirectory.path, artifact.fileName);
+          return OfficialServerDownloadResult(
+            artifact: artifact,
+            download: JarDownloadResult(
+              file: File(destinationPath),
+              receivedBytes: download.receivedBytes,
+              totalBytes: download.totalBytes,
+            ),
+            destinationFile: File(destinationPath),
+          );
+        } finally {
+          await _deleteTemporaryFile(download.file);
+        }
+      }
+
       final String destinationPath = path.join(
         storage.jarsDirectory.path,
         artifact.fileName,
@@ -108,6 +162,16 @@ class OfficialServerDownloadService {
       );
     } on JarDownloadException catch (error) {
       throw OfficialServerDownloadException(error.message);
+    }
+  }
+
+  Future<void> _deleteTemporaryFile(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Cache cleanup is best-effort; a stale temp file must not fail creation.
     }
   }
 
@@ -255,7 +319,16 @@ class OfficialServerDownloadService {
         .toList();
   }
 
-  Future<List<String>> _getPaperStableVersions() async {
+  Future<List<String>> _getPaperStableVersions({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh) {
+      final List<String>? cachedVersions = await _readCachedPaperVersions();
+      if (cachedVersions != null) {
+        return cachedVersions;
+      }
+    }
+
     final Map<String, dynamic> project = await _getJson(
       Uri.parse('https://fill.papermc.io/v3/projects/paper'),
       headers: <String, String>{'User-Agent': _paperUserAgent},
@@ -296,7 +369,48 @@ class OfficialServerDownloadService {
       }
     }
 
+    await _writeCachedPaperVersions(stableVersions);
     return stableVersions;
+  }
+
+  Future<List<String>?> _readCachedPaperVersions() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final int? timestampMs = preferences.getInt(
+      _paperVersionsCacheTimestampKey,
+    );
+    final String? encodedVersions = preferences.getString(
+      _paperVersionsCacheKey,
+    );
+
+    if (timestampMs == null || encodedVersions == null) {
+      return null;
+    }
+
+    final DateTime cachedAt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    if (DateTime.now().difference(cachedAt) > _versionCacheTtl) {
+      return null;
+    }
+
+    try {
+      final Object? decoded = jsonDecode(encodedVersions);
+      if (decoded is List<dynamic>) {
+        final List<String> versions = decoded.whereType<String>().toList();
+        return versions.isEmpty ? null : versions;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<void> _writeCachedPaperVersions(List<String> versions) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_paperVersionsCacheKey, jsonEncode(versions));
+    await preferences.setInt(
+      _paperVersionsCacheTimestampKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   Future<String?> _findLatestPaperVersionWithStableBuild() async {

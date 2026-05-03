@@ -12,9 +12,17 @@ class MainActivity : FlutterActivity() {
     private val localRuntimeManager: LocalRuntimeManager by lazy {
         LocalRuntimeManager(this)
     }
+    private val storageAccessManager: StorageAccessManager by lazy {
+        StorageAccessManager(this)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "bifrost/storage_access",
+        ).setMethodCallHandler(::handleStorageAccessMethodCall)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -25,6 +33,17 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "bifrost/local_runtime",
         ).setMethodCallHandler(::handleLocalRuntimeMethodCall)
+    }
+
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        if (storageAccessManager.handleActivityResult(requestCode, resultCode, data)) {
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun handleFileManagerMethodCall(
@@ -64,6 +83,119 @@ class MainActivity : FlutterActivity() {
             }
 
             else -> result.notImplemented()
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun handleStorageAccessMethodCall(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            when (call.method) {
+                "pickDirectory" -> storageAccessManager.pickDirectory(result)
+                "createServerStructure" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.createServerStructure(arguments)
+                }
+                "loadStoredServers" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.loadStoredServers(arguments)
+                }
+                "copyFileToDirectory" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.copyFileToDirectory(arguments)
+                }
+                "writeDownloadMetadata" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.writeDownloadMetadata(arguments)
+                    null
+                }
+                "deleteServerDirectory" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.deleteServerDirectory(arguments)
+                    null
+                }
+                "prepareServerLaunch" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.prepareServerLaunch(arguments)
+                }
+                "copyServerToDirectory" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.copyServerToDirectory(arguments)
+                }
+                "syncDirectoryToServer" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.syncDirectoryToServer(arguments)
+                    null
+                }
+                else -> result.notImplemented()
+            }
+        } catch (error: Exception) {
+            val message = buildString {
+                append(call.method)
+                append(" failed: ")
+                append(error::class.java.simpleName)
+                val details = error.message ?: error.localizedMessage
+                if (!details.isNullOrBlank()) {
+                    append(": ")
+                    append(details)
+                }
+            }
+            result.error(
+                "STORAGE_ACCESS_FAILED",
+                message,
+                null,
+            )
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun runStorageOperation(
+        call: MethodCall,
+        result: MethodChannel.Result,
+        operation: (Map<String, Any?>) -> Any?,
+    ) {
+        Thread {
+            try {
+                val operationResult = operation(call.arguments as? Map<String, Any?> ?: emptyMap())
+                runOnUiThread {
+                    result.success(operationResult)
+                }
+            } catch (error: Exception) {
+                val message = buildString {
+                    append(call.method)
+                    append(" failed: ")
+                    append(error::class.java.simpleName)
+                    val details = error.message ?: error.localizedMessage
+                    if (!details.isNullOrBlank()) {
+                        append(": ")
+                        append(details)
+                    }
+                }
+                runOnUiThread {
+                    result.error("STORAGE_ACCESS_FAILED", message, null)
+                }
+            }
+        }.apply {
+            name = "bifrost-storage-${call.method}"
+            start()
         }
     }
 
@@ -154,6 +286,18 @@ class MainActivity : FlutterActivity() {
                     result.error(
                         "START_SERVER_FAILED",
                         error.localizedMessage ?: "Unable to start the local server.",
+                        null,
+                    )
+                }
+            }
+
+            "stopServer" -> {
+                try {
+                    result.success(localRuntimeManager.stopServer())
+                } catch (error: Exception) {
+                    result.error(
+                        "STOP_SERVER_FAILED",
+                        error.localizedMessage ?: "Unable to stop the local server.",
                         null,
                     )
                 }
