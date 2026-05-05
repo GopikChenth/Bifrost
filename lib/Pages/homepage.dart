@@ -1,7 +1,8 @@
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Components/server_card.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
-import 'package:bifrost/Pages/setingspage.dart';
+import 'package:bifrost/Pages/serverpage.dart';
+import 'package:bifrost/Pages/settingspage.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:flutter/material.dart';
 
@@ -42,6 +43,19 @@ class _HomePageState extends State<HomePage> {
         });
   }
 
+  void _openServerPage(BifrostServer server) {
+    Navigator.of(context).push(
+      MaterialPageRoute<ServerPage>(
+        builder: (BuildContext context) {
+          return ServerPage(
+            serverPath: server.path,
+            serverManager: _serverManager,
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _openAddServerWindow() async {
     final AddServerResult? newServer = await showDialog<AddServerResult>(
       context: context,
@@ -59,9 +73,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _deleteServer(BifrostServer server) async {
@@ -100,9 +114,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _formatBytes(int bytes) {
@@ -166,16 +180,14 @@ class _HomePageState extends State<HomePage> {
                 : () {
                     _serverManager.stopServer(server);
                   },
-            onTestRuntime: _serverManager.isCreatingServer
-                ? null
-                : () {
-                    _serverManager.testRuntime(server);
-                  },
             onDelete: _serverManager.isCreatingServer
                 ? null
                 : () {
                     _deleteServer(server);
                   },
+            onOpenDashboard: () {
+              _openServerPage(server);
+            },
           ),
         );
       }),
@@ -195,11 +207,12 @@ class _HomePageState extends State<HomePage> {
       body: _serverManager.isLoadingServers
           ? const Center(child: CircularProgressIndicator())
           : content.isEmpty
-              ? const Center(child: Text('No servers found yet.'))
-              : ListView(padding: const EdgeInsets.all(16), children: content),
+          ? const Center(child: Text('No servers found yet.'))
+          : ListView(padding: const EdgeInsets.all(16), children: content),
       floatingActionButton: FloatingActionButton(
-        onPressed:
-            _serverManager.isCreatingServer ? null : _openAddServerWindow,
+        onPressed: _serverManager.isCreatingServer
+            ? null
+            : _openAddServerWindow,
         child: const Icon(Icons.add),
       ),
     );

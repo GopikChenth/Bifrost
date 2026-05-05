@@ -5,7 +5,9 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Service/official_server_download_service.dart';
 import 'package:bifrost/Service/server_storage_service.dart';
 import 'package:bifrost/Services/local_runtime_service.dart';
+import 'package:bifrost/Services/playit_tunnel_service.dart';
 import 'package:bifrost/Utils/local_runtime_models.dart';
+import 'package:bifrost/Models/tunnel_status.dart';
 import 'package:flutter/foundation.dart';
 
 class ServerManagerService extends ChangeNotifier {
@@ -14,15 +16,21 @@ class ServerManagerService extends ChangeNotifier {
         const OfficialServerDownloadService(),
     ServerStorageService serverStorageService = const ServerStorageService(),
     LocalRuntimeService localRuntimeService = const LocalRuntimeService(),
+    PlayitTunnelService? playitTunnelService,
   }) : _officialServerDownloadService = officialServerDownloadService,
        _serverStorageService = serverStorageService,
-       _localRuntimeService = localRuntimeService;
+       _localRuntimeService = localRuntimeService,
+       _playitTunnelService = playitTunnelService ?? PlayitTunnelService();
 
   final OfficialServerDownloadService _officialServerDownloadService;
   final ServerStorageService _serverStorageService;
   final LocalRuntimeService _localRuntimeService;
+  final PlayitTunnelService _playitTunnelService;
 
   final List<BifrostServer> _servers = <BifrostServer>[];
+  final Map<String, String> _consoleOutputByServerPath = <String, String>{};
+  final Map<String, String> _tunnelOutputByServerPath = <String, String>{};
+  final Set<String> _tunnelAutoStartAttempted = <String>{};
   Timer? _serverStatusPollTimer;
 
   bool isLoadingServers = true;
@@ -34,6 +42,23 @@ class ServerManagerService extends ChangeNotifier {
   String? lastErrorMessage;
 
   List<BifrostServer> get servers => List<BifrostServer>.unmodifiable(_servers);
+
+  BifrostServer? serverByPath(String serverPath) {
+    for (final BifrostServer server in _servers) {
+      if (server.path == serverPath) {
+        return server;
+      }
+    }
+    return null;
+  }
+
+  String consoleOutputFor(String serverPath) {
+    return _consoleOutputByServerPath[serverPath] ?? '';
+  }
+
+  String tunnelOutputFor(String serverPath) {
+    return _tunnelOutputByServerPath[serverPath] ?? '';
+  }
 
   double? get downloadProgress {
     final int? total = totalDownloadBytes;
@@ -269,8 +294,13 @@ class ServerManagerService extends ChangeNotifier {
     );
 
     try {
+      await _playitTunnelService.stop();
       final LocalServerStatus status = await _localRuntimeService.stopServer();
       _applyServerStatus(serverPath: server.path, status: status);
+      _applyTunnelStatus(
+        serverPath: server.path,
+        status: TunnelStatus.stopped,
+      );
       _startServerStatusPolling(server: server);
     } on LocalRuntimeServiceException catch (error) {
       _updateServer(
@@ -291,6 +321,160 @@ class ServerManagerService extends ChangeNotifier {
     }
   }
 
+  Future<void> restartServer(BifrostServer server) async {
+    if (server.path.trim().isEmpty) {
+      return;
+    }
+
+    _updateServer(
+      server.path,
+      isBusy: true,
+      status: 'Restarting',
+      consoleLabel: 'Restarting',
+      runtimeMessage: 'Stopping the server before launching it again.',
+    );
+
+    try {
+      if (server.isOnline || server.isBusy) {
+        await _playitTunnelService.stop();
+        await _localRuntimeService.stopServer();
+        await _waitForServerIdle();
+        await _serverStorageService.syncRuntimeMirrorToServer(
+          serverPath: server.path,
+          serverUri: server.serverUri,
+        );
+      }
+
+      final BifrostServer latestServer = serverByPath(server.path) ?? server;
+      await startServer(latestServer.copyWith(isBusy: false));
+    } on LocalRuntimeServiceException catch (error) {
+      _updateServer(
+        server.path,
+        isBusy: false,
+        status: 'Error',
+        consoleLabel: 'Restart Failed',
+        runtimeMessage: error.message,
+      );
+    } on ServerStorageException catch (error) {
+      _updateServer(
+        server.path,
+        isBusy: false,
+        status: 'Error',
+        consoleLabel: 'Restart Failed',
+        runtimeMessage: error.message,
+      );
+    } catch (_) {
+      _updateServer(
+        server.path,
+        isBusy: false,
+        status: 'Error',
+        consoleLabel: 'Restart Failed',
+        runtimeMessage: 'Unable to restart the server.',
+      );
+    }
+  }
+
+  Future<void> refreshServerStatusFor(String serverPath) async {
+    try {
+      final LocalServerStatus status = await _localRuntimeService.getServerStatus();
+      final String? activeServerPath = status.activeServerPath;
+      final String targetServerPath =
+          _servers.any((BifrostServer server) => server.path == activeServerPath)
+          ? activeServerPath!
+          : serverPath;
+      _applyServerStatus(serverPath: targetServerPath, status: status);
+      if (_playitTunnelService.isRunning) {
+        _applyTunnelStatus(
+          serverPath: targetServerPath,
+          status: _playitTunnelService.status(),
+        );
+      }
+    } catch (_) {
+      // A dashboard/terminal refresh should not surface transient channel errors.
+    }
+  }
+
+  Future<String?> sendServerCommand({
+    required BifrostServer server,
+    required String command,
+  }) async {
+    final String trimmedCommand = command.trim();
+    if (trimmedCommand.isEmpty) {
+      return null;
+    }
+
+    try {
+      final LocalServerStatus status =
+          await _localRuntimeService.sendServerCommand(trimmedCommand);
+      _applyServerStatus(serverPath: server.path, status: status);
+      return 'Sent: $trimmedCommand';
+    } on LocalRuntimeServiceException catch (error) {
+      _updateServer(
+        server.path,
+        runtimeMessage: error.message,
+      );
+      return error.message;
+    }
+  }
+
+  Future<String?> startPlayitTunnel(BifrostServer server) async {
+    if (server.path.trim().isEmpty) {
+      return null;
+    }
+
+    _updateServer(
+      server.path,
+      tunnelStatus: 'Starting',
+      tunnelMessage: 'Starting Playit tunnel agent.',
+    );
+
+    try {
+      final TunnelStatus status = await _playitTunnelService.start(
+        serverPath: server.path,
+        serverName: server.name,
+      );
+      _applyTunnelStatus(serverPath: server.path, status: status);
+      return status.publicAddress == null
+          ? status.message
+          : 'Playit address: ${status.publicAddress}';
+    } on PlayitTunnelException catch (error) {
+      _updateServer(
+        server.path,
+        tunnelStatus: 'Error',
+        tunnelMessage: error.message,
+      );
+      return error.message;
+    } catch (error) {
+      const String message = 'Unable to start the Playit tunnel.';
+      _updateServer(
+        server.path,
+        tunnelStatus: 'Error',
+        tunnelMessage: '$message $error',
+      );
+      return message;
+    }
+  }
+
+  Future<String?> stopPlayitTunnel(BifrostServer server) async {
+    final TunnelStatus status = await _playitTunnelService.stop();
+    _applyTunnelStatus(serverPath: server.path, status: status);
+    return status.message;
+  }
+
+  Future<void> _waitForServerIdle() async {
+    for (var attempt = 0; attempt < 45; attempt++) {
+      final LocalServerStatus status = await _localRuntimeService.getServerStatus();
+      if (!status.isBusy) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+
+    throw const LocalRuntimeServiceException(
+      'Timed out waiting for the server to stop.',
+    );
+  }
+
   void _startServerStatusPolling({required BifrostServer server}) {
     _serverStatusPollTimer?.cancel();
     var syncStarted = false;
@@ -308,8 +492,24 @@ class ServerManagerService extends ChangeNotifier {
           if (targetServerPath != null) {
             _applyServerStatus(serverPath: targetServerPath, status: status);
           }
+          if (targetServerPath != null &&
+              status.state == 'running' &&
+              !_tunnelAutoStartAttempted.contains(targetServerPath)) {
+            _tunnelAutoStartAttempted.add(targetServerPath);
+            final BifrostServer? currentServer = serverByPath(targetServerPath);
+            if (currentServer != null) {
+              await _autoStartPlayitTunnel(currentServer);
+            }
+          }
+          if (targetServerPath != null && _playitTunnelService.isRunning) {
+            _applyTunnelStatus(
+              serverPath: targetServerPath,
+              status: _playitTunnelService.status(),
+            );
+          }
           if (!status.isBusy) {
             if (!syncStarted && status.state == 'stopped') {
+              _tunnelAutoStartAttempted.remove(server.path);
               syncStarted = true;
               await _syncRuntimeMirrorAfterStop(server);
             }
@@ -339,6 +539,33 @@ class ServerManagerService extends ChangeNotifier {
         consoleLabel: 'Sync Failed',
         runtimeMessage: error.message,
         isBusy: false,
+      );
+    }
+  }
+
+  Future<void> _autoStartPlayitTunnel(BifrostServer server) async {
+    try {
+      if (!await _playitTunnelService.shouldAutoStart()) {
+        return;
+      }
+      final TunnelStatus status = await _playitTunnelService.start(
+        serverPath: server.path,
+        serverName: server.name,
+      );
+      if (status.state != 'disabled') {
+        _applyTunnelStatus(serverPath: server.path, status: status);
+      }
+    } on PlayitTunnelException catch (error) {
+      _updateServer(
+        server.path,
+        tunnelStatus: 'Error',
+        tunnelMessage: error.message,
+      );
+    } catch (_) {
+      _updateServer(
+        server.path,
+        tunnelStatus: 'Error',
+        tunnelMessage: 'Unable to auto-start the Playit tunnel.',
       );
     }
   }
@@ -373,6 +600,33 @@ class ServerManagerService extends ChangeNotifier {
       runtimeMessage: status.lastMessage ?? fallbackMessage,
       isBusy: status.isBusy,
     );
+    if (status.consoleOutput.trim().isNotEmpty) {
+      _consoleOutputByServerPath[serverPath] = status.consoleOutput;
+    }
+  }
+
+  void _applyTunnelStatus({
+    required String serverPath,
+    required TunnelStatus status,
+  }) {
+    final String tunnelStatus = switch (status.state) {
+      'starting' => 'Starting',
+      'running' => 'Online',
+      'stopped' => 'Off',
+      'disabled' => 'Off',
+      'error' => 'Error',
+      _ => 'Off',
+    };
+
+    _updateServer(
+      serverPath,
+      tunnelStatus: tunnelStatus,
+      tunnelAddress: status.publicAddress,
+      tunnelMessage: status.message ?? status.claimUrl,
+    );
+    if (status.logOutput.trim().isNotEmpty) {
+      _tunnelOutputByServerPath[serverPath] = status.logOutput;
+    }
   }
 
   void _updateServer(
@@ -380,6 +634,9 @@ class ServerManagerService extends ChangeNotifier {
     String? status,
     String? consoleLabel,
     String? runtimeMessage,
+    String? tunnelStatus,
+    String? tunnelAddress,
+    String? tunnelMessage,
     bool? isBusy,
   }) {
     final int index = _servers.indexWhere(
@@ -393,6 +650,9 @@ class ServerManagerService extends ChangeNotifier {
       status: status,
       consoleLabel: consoleLabel,
       runtimeMessage: runtimeMessage,
+      tunnelStatus: tunnelStatus,
+      tunnelAddress: tunnelAddress,
+      tunnelMessage: tunnelMessage,
       isBusy: isBusy,
     );
     notifyListeners();

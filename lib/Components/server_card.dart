@@ -12,9 +12,9 @@ class ServerCard extends StatelessWidget {
     required this.memoryLabel,
     this.serverPath,
     this.onDelete,
-    this.onTestRuntime,
     this.onStartServer,
     this.onStopServer,
+    this.onOpenDashboard,
     this.isBusy = false,
     this.isOnline = false,
     this.consoleLabel = 'Ready',
@@ -28,9 +28,9 @@ class ServerCard extends StatelessWidget {
   final String memoryLabel;
   final String? serverPath;
   final VoidCallback? onDelete;
-  final VoidCallback? onTestRuntime;
   final VoidCallback? onStartServer;
   final VoidCallback? onStopServer;
+  final VoidCallback? onOpenDashboard;
   final bool isBusy;
   final bool isOnline;
   final String consoleLabel;
@@ -84,27 +84,30 @@ class ServerCard extends StatelessWidget {
       elevation: 0,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: colors.outlineVariant),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
+      child: InkWell(
+        onTap: onOpenDashboard,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.outlineVariant),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
             Row(
               children: <Widget>[
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: colors.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.storage_rounded, color: accent),
+                  child: Icon(Icons.storage_rounded, size: 20, color: accent),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,7 +118,7 @@ class ServerCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         '$serverType • $version',
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -127,8 +130,8 @@ class ServerCard extends StatelessWidget {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                    horizontal: 9,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
                     color: badgeBackground,
@@ -142,8 +145,9 @@ class ServerCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 IconButton(
+                  visualDensity: VisualDensity.compact,
                   onPressed: serverPath == null
                       ? null
                       : () {
@@ -153,13 +157,14 @@ class ServerCard extends StatelessWidget {
                   icon: const Icon(Icons.folder_open_rounded),
                 ),
                 IconButton(
+                  visualDensity: VisualDensity.compact,
                   onPressed: isBusy ? null : onDelete,
                   tooltip: 'Delete Server',
                   icon: Icon(Icons.delete_outline_rounded, color: colors.error),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Row(
               children: <Widget>[
                 Expanded(
@@ -169,7 +174,7 @@ class ServerCard extends StatelessWidget {
                     value: memoryLabel,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: _ServerMetric(
                     icon: Icons.terminal_rounded,
@@ -179,10 +184,10 @@ class ServerCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 8,
               children: <Widget>[
                 FilledButton.tonalIcon(
                   onPressed: isBusy || isOnline ? null : onStartServer,
@@ -198,20 +203,15 @@ class ServerCard extends StatelessWidget {
                     backgroundColor: colors.errorContainer,
                   ),
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: isBusy ? null : onTestRuntime,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Test Runtime'),
-                ),
               ],
             ),
             if (runtimeMessage != null && runtimeMessage!.trim().isNotEmpty) ...<
               Widget
             >[
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: colors.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
@@ -224,7 +224,8 @@ class ServerCard extends StatelessWidget {
                 ),
               ),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -313,15 +314,15 @@ class _ServerMetric extends StatelessWidget {
     final ColorScheme colors = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: <Widget>[
-          Icon(icon, size: 18, color: colors.primary),
-          const SizedBox(width: 10),
+          Icon(icon, size: 16, color: colors.primary),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,7 +333,7 @@ class _ServerMetric extends StatelessWidget {
                     color: colors.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   value,
                   style: theme.textTheme.bodyMedium?.copyWith(

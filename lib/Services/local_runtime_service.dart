@@ -109,4 +109,21 @@ class LocalRuntimeService {
       );
     }
   }
+
+  Future<LocalServerStatus> sendServerCommand(String command) async {
+    try {
+      final Map<Object?, Object?>? result =
+          await _channel.invokeMapMethod<Object?, Object?>(
+        'sendServerCommand',
+        <String, Object?>{'command': command},
+      );
+      return LocalServerStatus.fromMap(
+        result ?? <Object?, Object?>{},
+      );
+    } on PlatformException catch (error) {
+      throw LocalRuntimeServiceException(
+        error.message ?? 'Unable to send the server command.',
+      );
+    }
+  }
 }

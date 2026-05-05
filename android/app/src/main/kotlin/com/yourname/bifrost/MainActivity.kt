@@ -33,6 +33,11 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "bifrost/local_runtime",
         ).setMethodCallHandler(::handleLocalRuntimeMethodCall)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "bifrost/native_package",
+        ).setMethodCallHandler(::handleNativePackageMethodCall)
     }
 
     override fun onActivityResult(
@@ -44,6 +49,16 @@ class MainActivity : FlutterActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun handleNativePackageMethodCall(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        when (call.method) {
+            "getNativeLibraryDir" -> result.success(applicationInfo.nativeLibraryDir)
+            else -> result.notImplemented()
+        }
     }
 
     private fun handleFileManagerMethodCall(
@@ -298,6 +313,28 @@ class MainActivity : FlutterActivity() {
                     result.error(
                         "STOP_SERVER_FAILED",
                         error.localizedMessage ?: "Unable to stop the local server.",
+                        null,
+                    )
+                }
+            }
+
+            "sendServerCommand" -> {
+                try {
+                    val command = call.argument<String>("command")?.trim().orEmpty()
+                    if (command.isEmpty()) {
+                        result.error(
+                            "INVALID_SERVER_COMMAND",
+                            "command is required.",
+                            null,
+                        )
+                        return
+                    }
+
+                    result.success(localRuntimeManager.sendServerCommand(command))
+                } catch (error: Exception) {
+                    result.error(
+                        "SEND_SERVER_COMMAND_FAILED",
+                        error.localizedMessage ?: "Unable to send the server command.",
                         null,
                     )
                 }

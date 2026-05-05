@@ -11,6 +11,9 @@ class BifrostServer {
     this.status = 'Offline',
     this.consoleLabel = 'Ready',
     this.runtimeMessage,
+    this.tunnelStatus = 'Off',
+    this.tunnelAddress,
+    this.tunnelMessage,
     this.isBusy = false,
   });
 
@@ -25,9 +28,13 @@ class BifrostServer {
   final String status;
   final String consoleLabel;
   final String? runtimeMessage;
+  final String tunnelStatus;
+  final String? tunnelAddress;
+  final String? tunnelMessage;
   final bool isBusy;
 
   bool get isOnline => status == 'Running';
+  bool get isTunnelOnline => tunnelStatus == 'Online';
 
   factory BifrostServer.fromStorageMap(Map<String, Object> map) {
     return BifrostServer(
@@ -40,6 +47,9 @@ class BifrostServer {
       metadataUri: map['metadataUri'] as String?,
       jarsUri: map['jarsUri'] as String?,
       status: map['status'] as String? ?? 'Offline',
+      tunnelStatus: map['tunnelStatus'] as String? ?? 'Off',
+      tunnelAddress: map['tunnelAddress'] as String?,
+      tunnelMessage: map['tunnelMessage'] as String?,
     );
   }
 
@@ -55,6 +65,9 @@ class BifrostServer {
     String? status,
     String? consoleLabel,
     String? runtimeMessage,
+    String? tunnelStatus,
+    String? tunnelAddress,
+    String? tunnelMessage,
     bool? isBusy,
   }) {
     return BifrostServer(
@@ -69,6 +82,9 @@ class BifrostServer {
       status: status ?? this.status,
       consoleLabel: consoleLabel ?? this.consoleLabel,
       runtimeMessage: runtimeMessage ?? this.runtimeMessage,
+      tunnelStatus: tunnelStatus ?? this.tunnelStatus,
+      tunnelAddress: tunnelAddress ?? this.tunnelAddress,
+      tunnelMessage: tunnelMessage ?? this.tunnelMessage,
       isBusy: isBusy ?? this.isBusy,
     );
   }

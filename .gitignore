@@ -64,6 +64,7 @@ app.*.map.json
 /tunnel/
 /playit/
 /ngrok/
+/playit-linux-aarch64
 
 # Local Android runtime investigation assets
 /Amethyst-Android-3_openjdk/

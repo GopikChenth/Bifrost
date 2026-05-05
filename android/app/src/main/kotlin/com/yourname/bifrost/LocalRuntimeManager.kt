@@ -221,6 +221,29 @@ class LocalRuntimeManager(
         return getServerStatus()
     }
 
+    fun sendServerCommand(command: String): Map<String, Any?> {
+        val trimmedCommand = command.trim()
+        if (trimmedCommand.isEmpty()) {
+            throw IllegalArgumentException("Command cannot be empty.")
+        }
+
+        val thread = launchThread
+        if (thread == null || !thread.isAlive || serverState.get() != "running") {
+            throw IllegalStateException("No online Minecraft server is ready for commands.")
+        }
+
+        val result = LocalJvmBridge.sendJVMCommand(trimmedCommand)
+        if (result < 0) {
+            throw IOException("Unable to send command to the Minecraft server.")
+        }
+        if (result == 0) {
+            throw IllegalStateException("Minecraft server input is not connected.")
+        }
+
+        lastMessage.set("Command sent: $trimmedCommand")
+        return getServerStatus()
+    }
+
     fun getServerStatus(): Map<String, Any?> {
         if (serverState.get() == "starting" && LocalJvmBridge.isJVMReady()) {
             serverState.set("running")
@@ -232,6 +255,7 @@ class LocalRuntimeManager(
             "activeServerPath" to activeServerPath,
             "lastExitCode" to lastExitCode,
             "lastMessage" to lastMessage.get(),
+            "consoleOutput" to LocalJvmBridge.getJVMOutput(),
         )
     }
 

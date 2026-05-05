@@ -9,11 +9,15 @@ object LocalJvmBridge {
 
     external fun stopJVM(): Int
 
+    external fun sendJVMCommand(command: String): Int
+
     external fun terminateJVM(): Int
 
     external fun forceStopJVM(): Int
 
     external fun isJVMReady(): Boolean
+
+    external fun getJVMOutput(): String
 
     external fun setLdLibraryPath(ldLibraryPath: String)
 

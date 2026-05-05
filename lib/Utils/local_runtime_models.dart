@@ -61,12 +61,14 @@ class LocalServerStatus {
     required this.activeServerPath,
     required this.lastExitCode,
     required this.lastMessage,
+    required this.consoleOutput,
   });
 
   final String state;
   final String? activeServerPath;
   final int? lastExitCode;
   final String? lastMessage;
+  final String consoleOutput;
 
   bool get isBusy =>
       state == 'starting' || state == 'running' || state == 'stopping';
@@ -77,6 +79,7 @@ class LocalServerStatus {
       activeServerPath: map['activeServerPath'] as String?,
       lastExitCode: map['lastExitCode'] as int?,
       lastMessage: map['lastMessage'] as String?,
+      consoleOutput: map['consoleOutput'] as String? ?? '',
     );
   }
 }

@@ -47,6 +47,11 @@ static volatile sig_atomic_t active_jvm_pid = -1;
 static volatile sig_atomic_t active_jvm_stdin_fd = -1;
 static volatile sig_atomic_t active_jvm_ready = 0;
 
+#define LOG_BUFFER_SIZE 262144
+static pthread_mutex_t log_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+static char jvm_log_buffer[LOG_BUFFER_SIZE];
+static size_t jvm_log_buffer_len = 0;
+
 /* ──────────────────────────────────────────────────────────────────
  * Pipe-based log reader
  *
@@ -64,6 +69,37 @@ static void inspect_jvm_log_line(const char* line) {
     }
 }
 
+static void append_jvm_log_line(const char* line) {
+    if (line == NULL || line[0] == '\0') {
+        return;
+    }
+
+    pthread_mutex_lock(&log_buffer_mutex);
+    size_t line_len = strlen(line);
+    size_t required = line_len + 1;
+    if (required >= LOG_BUFFER_SIZE) {
+        line += required - LOG_BUFFER_SIZE + 1;
+        line_len = strlen(line);
+        required = line_len + 1;
+    }
+
+    if (jvm_log_buffer_len + required >= LOG_BUFFER_SIZE) {
+        size_t overflow = (jvm_log_buffer_len + required) - LOG_BUFFER_SIZE + 1;
+        if (overflow < jvm_log_buffer_len) {
+            memmove(jvm_log_buffer, jvm_log_buffer + overflow, jvm_log_buffer_len - overflow);
+            jvm_log_buffer_len -= overflow;
+        } else {
+            jvm_log_buffer_len = 0;
+        }
+    }
+
+    memcpy(jvm_log_buffer + jvm_log_buffer_len, line, line_len);
+    jvm_log_buffer_len += line_len;
+    jvm_log_buffer[jvm_log_buffer_len++] = '\n';
+    jvm_log_buffer[jvm_log_buffer_len] = '\0';
+    pthread_mutex_unlock(&log_buffer_mutex);
+}
+
 static void* jvm_log_reader(void* arg) {
     int fd = *((int*) arg);
     free(arg);
@@ -78,12 +114,14 @@ static void* jvm_log_reader(void* arg) {
             *newline = '\0';
             if (line[0] != '\0') {
                 inspect_jvm_log_line(line);
+                append_jvm_log_line(line);
                 __android_log_print(ANDROID_LOG_INFO, "bifrost-jvm", "%s", line);
             }
             line = newline + 1;
         }
         if (line[0] != '\0') {
             inspect_jvm_log_line(line);
+            append_jvm_log_line(line);
             __android_log_print(ANDROID_LOG_INFO, "bifrost-jvm", "%s", line);
         }
     }
@@ -222,6 +260,10 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
 
     LOGD("Forking child process for JVM");
     active_jvm_ready = 0;
+    pthread_mutex_lock(&log_buffer_mutex);
+    jvm_log_buffer_len = 0;
+    jvm_log_buffer[0] = '\0';
+    pthread_mutex_unlock(&log_buffer_mutex);
     pid_t pid = fork();
 
     if (pid < 0) {
@@ -310,6 +352,18 @@ Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
     return active_jvm_ready == 1 ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_getJVMOutput(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) clazz;
+    pthread_mutex_lock(&log_buffer_mutex);
+    jstring output = (*env)->NewStringUTF(env, jvm_log_buffer);
+    pthread_mutex_unlock(&log_buffer_mutex);
+    return output;
+}
+
 JNIEXPORT jint JNICALL
 Java_com_yourname_bifrost_LocalJvmBridge_stopJVM(
     JNIEnv* env,
@@ -332,6 +386,48 @@ Java_com_yourname_bifrost_LocalJvmBridge_stopJVM(
     }
 
     LOGD("Graceful stop command written to JVM child stdin");
+    return 1;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_sendJVMCommand(
+    JNIEnv* env,
+    jclass clazz,
+    jstring commandString
+) {
+    (void) clazz;
+
+    int fd = (int) active_jvm_stdin_fd;
+    if (fd < 0) {
+        LOGD("sendJVMCommand requested but no active JVM stdin pipe is registered");
+        return 0;
+    }
+
+    const char* command = (*env)->GetStringUTFChars(env, commandString, NULL);
+    if (command == NULL) {
+        return -1;
+    }
+
+    size_t command_len = strlen(command);
+    ssize_t written = write(fd, command, command_len);
+    if (written >= 0 && (command_len == 0 || command[command_len - 1] != '\n')) {
+        ssize_t newline_written = write(fd, "\n", 1);
+        if (newline_written < 0) {
+            written = -1;
+        }
+    }
+
+    if (written < 0) {
+        LOGE("Writing JVM command failed: %s", strerror(errno));
+        (*env)->ReleaseStringUTFChars(env, commandString, command);
+        return -1;
+    }
+
+    char echo_line[1024];
+    snprintf(echo_line, sizeof(echo_line), "> %s", command);
+    append_jvm_log_line(echo_line);
+    LOGD("JVM command written to child stdin");
+    (*env)->ReleaseStringUTFChars(env, commandString, command);
     return 1;
 }
 
