@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:bifrost/Service/server_storage_service.dart';
 import 'package:bifrost/Utils/directory_picker_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
@@ -21,16 +20,11 @@ class _SettingsPageState extends State<SettingsPage> {
   final ServerStorageService _serverStorageService =
       const ServerStorageService();
   final TextEditingController _customPathController = TextEditingController();
-  final TextEditingController _playitExecutableController =
-      TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isPickingDirectory = false;
-  bool _isPickingPlayitAgent = false;
   bool _useDefaultDirectory = true;
-  bool _playitEnabled = false;
-  bool _playitAutoStart = true;
   String _customDirectoryUri = '';
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
@@ -45,8 +39,6 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final ServerDirectorySettings settings =
           await _settingsRepository.loadServerDirectorySettings();
-      final PlayitTunnelSettings playitSettings =
-          await _settingsRepository.loadPlayitTunnelSettings();
       final String resolvedDirectoryPath =
           await _serverStorageService.resolveBaseDirectoryPath();
 
@@ -58,9 +50,6 @@ class _SettingsPageState extends State<SettingsPage> {
         _useDefaultDirectory = settings.useDefaultDirectory;
         _customPathController.text = settings.customDirectoryPath;
         _customDirectoryUri = settings.customDirectoryUri;
-        _playitEnabled = playitSettings.enabled;
-        _playitAutoStart = playitSettings.autoStart;
-        _playitExecutableController.text = playitSettings.executablePath;
         _resolvedDirectoryPath = resolvedDirectoryPath;
         _statusMessage = null;
       });
@@ -132,13 +121,6 @@ class _SettingsPageState extends State<SettingsPage> {
         customDirectoryUri: _useDefaultDirectory ? '' : _customDirectoryUri,
       );
       await _settingsRepository.saveServerDirectorySettings(settings);
-      await _settingsRepository.savePlayitTunnelSettings(
-        PlayitTunnelSettings(
-          enabled: _playitEnabled,
-          autoStart: _playitAutoStart,
-          executablePath: _playitExecutableController.text.trim(),
-        ),
-      );
 
       final String resolvedDirectoryPath =
           await _serverStorageService.resolveBaseDirectoryPath();
@@ -217,38 +199,10 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Future<void> _selectPlayitAgent() async {
-    setState(() {
-      _isPickingPlayitAgent = true;
-    });
-
-    try {
-      final FilePickerResult? result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Select Playit agent executable',
-        type: FileType.any,
-      );
-      final String? selectedPath = result?.files.single.path;
-      if (!mounted || selectedPath == null) {
-        return;
-      }
-
-      setState(() {
-        _playitExecutableController.text = selectedPath;
-        _playitEnabled = true;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPickingPlayitAgent = false;
-        });
-      }
-    }
-  }
 
   @override
   void dispose() {
     _customPathController.dispose();
-    _playitExecutableController.dispose();
     super.dispose();
   }
 
@@ -371,89 +325,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Playit Tunnel',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Use the Playit agent to expose the running Minecraft server without router port forwarding. A bundled arm64 agent is used when no custom executable path is selected.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Enable Playit tunnel'),
-                          subtitle: const Text(
-                            'Dashboard can start/stop Playit for an online server.',
-                          ),
-                          value: _playitEnabled,
-                          onChanged: (bool value) {
-                            setState(() {
-                              _playitEnabled = value;
-                            });
-                          },
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Auto-start with server'),
-                          subtitle: const Text(
-                            'Starts Playit after Minecraft reaches online.',
-                          ),
-                          value: _playitAutoStart,
-                          onChanged: _playitEnabled
-                              ? (bool value) {
-                                  setState(() {
-                                    _playitAutoStart = value;
-                                  });
-                                }
-                              : null,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _playitExecutableController,
-                          enabled: _playitEnabled,
-                          decoration: const InputDecoration(
-                            labelText: 'Playit agent executable path',
-                            hintText: 'Leave empty to use bundled Playit agent',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        FilledButton.tonalIcon(
-                          onPressed: _playitEnabled && !_isPickingPlayitAgent
-                              ? _selectPlayitAgent
-                              : null,
-                          icon: const Icon(Icons.file_open_rounded),
-                          label: Text(
-                            _isPickingPlayitAgent
-                                ? 'Opening file picker...'
-                                : 'Select Playit Agent',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+
               ],
             ),
       bottomNavigationBar: SafeArea(

@@ -622,7 +622,10 @@ class ServerManagerService extends ChangeNotifier {
       serverPath,
       tunnelStatus: tunnelStatus,
       tunnelAddress: status.publicAddress,
-      tunnelMessage: status.message ?? status.claimUrl,
+      tunnelClaimUrl: status.claimUrl,
+      tunnelMessage: status.publicAddress != null
+          ? 'Connected via Playit tunnel.'
+          : status.message,
     );
     if (status.logOutput.trim().isNotEmpty) {
       _tunnelOutputByServerPath[serverPath] = status.logOutput;
@@ -637,6 +640,7 @@ class ServerManagerService extends ChangeNotifier {
     String? tunnelStatus,
     String? tunnelAddress,
     String? tunnelMessage,
+    Object? tunnelClaimUrl = const Object(),
     bool? isBusy,
   }) {
     final int index = _servers.indexWhere(
@@ -653,6 +657,7 @@ class ServerManagerService extends ChangeNotifier {
       tunnelStatus: tunnelStatus,
       tunnelAddress: tunnelAddress,
       tunnelMessage: tunnelMessage,
+      tunnelClaimUrl: tunnelClaimUrl,
       isBusy: isBusy,
     );
     notifyListeners();

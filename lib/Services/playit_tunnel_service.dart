@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
 
 import 'package:bifrost/Models/tunnel_status.dart';
-import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -17,12 +17,12 @@ class PlayitTunnelException implements Exception {
   String toString() => message;
 }
 
+/// Manages the bundled Playit agent lifecycle.
+///
+/// The agent binary is shipped as `libplayit.so` in jniLibs and is
+/// automatically extracted to [applicationInfo.nativeLibraryDir] by the
+/// Android package manager — no user configuration required.
 class PlayitTunnelService {
-  PlayitTunnelService({
-    SettingsRepository settingsRepository = const SettingsRepository(),
-  }) : _settingsRepository = settingsRepository;
-
-  final SettingsRepository _settingsRepository;
   static const MethodChannel _nativePackageChannel = MethodChannel(
     'bifrost/native_package',
   );
@@ -38,39 +38,34 @@ class PlayitTunnelService {
 
   String get logOutput => _logOutput;
 
-  Future<bool> shouldAutoStart() async {
-    final PlayitTunnelSettings settings =
-        await _settingsRepository.loadPlayitTunnelSettings();
-    return settings.enabled && settings.autoStart;
-  }
+  /// Always auto-starts with the server — no user toggle needed.
+  Future<bool> shouldAutoStart() async => true;
 
   Future<TunnelStatus> start({
     required String serverPath,
     required String serverName,
     int localPort = 25565,
   }) async {
-    final PlayitTunnelSettings settings =
-        await _settingsRepository.loadPlayitTunnelSettings();
+    final String executablePath = await _resolveBundledExecutablePath();
+    dev.log('Resolved executable: $executablePath', name: 'bifrost.playit');
 
-    if (!settings.enabled) {
-      return TunnelStatus.disabled;
-    }
-
-    final String executablePath = await _resolveExecutablePath(settings);
     if (executablePath.isEmpty) {
+      dev.log('ERROR: executable path is empty', name: 'bifrost.playit');
       throw const PlayitTunnelException(
-        'Playit is enabled, but no bundled or selected agent executable was found.',
+        'Playit agent not found. Ensure libplayit.so is present in jniLibs/arm64-v8a/.',
       );
     }
 
     final File executable = File(executablePath);
     if (!await executable.exists()) {
+      dev.log('ERROR: file does not exist at $executablePath', name: 'bifrost.playit');
       throw PlayitTunnelException(
         'Playit agent was not found at $executablePath.',
       );
     }
 
     if (_process != null) {
+      dev.log('Already running, skipping start.', name: 'bifrost.playit');
       return _currentStatus(
         state: 'running',
         message: 'Playit tunnel is already running.',
@@ -97,11 +92,13 @@ class PlayitTunnelService {
         },
       );
       _process = process;
+      dev.log('Process started (pid ${process.pid}), workdir: ${workingDirectory.path}', name: 'bifrost.playit');
       _listenToProcess(process);
 
       unawaited(
         process.exitCode.then((int exitCode) {
-          _appendLog('Playit agent exited with code $exitCode');
+          dev.log('Process exited with code $exitCode', name: 'bifrost.playit');
+          _appendLog('[playit exited with code $exitCode]');
           _process = null;
         }),
       );
@@ -109,7 +106,7 @@ class PlayitTunnelService {
       return _currentStatus(
         state: 'starting',
         message:
-            'Playit agent started. Claim it in the Playit dashboard if this is the first run.',
+            'Playit agent started. If this is your first run, visit the claim URL shown below.',
       );
     } on ProcessException catch (error) {
       throw PlayitTunnelException(
@@ -119,24 +116,6 @@ class PlayitTunnelService {
       throw PlayitTunnelException(
         'Unable to prepare Playit working directory: ${error.message}',
       );
-    }
-  }
-
-  Future<String> _resolveExecutablePath(PlayitTunnelSettings settings) async {
-    final String selectedPath = settings.executablePath.trim();
-    if (selectedPath.isNotEmpty) {
-      return selectedPath;
-    }
-
-    try {
-      final String? nativeLibraryDir = await _nativePackageChannel
-          .invokeMethod<String>('getNativeLibraryDir');
-      if (nativeLibraryDir == null || nativeLibraryDir.trim().isEmpty) {
-        return '';
-      }
-      return path.join(nativeLibraryDir, 'libplayit.so');
-    } on PlatformException {
-      return '';
     }
   }
 
@@ -186,6 +165,7 @@ class PlayitTunnelService {
 
   void _handleOutputLine(String line) {
     _appendLog(line);
+    dev.log(line, name: 'bifrost.playit');
     _claimUrl ??= _extractClaimUrl(line);
     _publicAddress ??= _extractPublicAddress(line);
   }
@@ -242,10 +222,25 @@ class PlayitTunnelService {
       publicAddress: _publicAddress,
       claimUrl: _claimUrl,
       message: _publicAddress == null && _claimUrl != null
-          ? 'Claim the Playit agent: $_claimUrl'
+          ? 'Claim your agent at: $_claimUrl'
           : message,
       logOutput: _logOutput,
     );
+  }
+
+  /// Returns the path to [libplayit.so] in the app's native library directory.
+  /// Android extracts this automatically from jniLibs — no manual copy needed.
+  Future<String> _resolveBundledExecutablePath() async {
+    try {
+      final String? nativeLibraryDir = await _nativePackageChannel
+          .invokeMethod<String>('getNativeLibraryDir');
+      if (nativeLibraryDir == null || nativeLibraryDir.trim().isEmpty) {
+        return '';
+      }
+      return path.join(nativeLibraryDir, 'libplayit.so');
+    } on PlatformException {
+      return '';
+    }
   }
 
   Future<Directory> _playitWorkingDirectory({

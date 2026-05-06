@@ -6,7 +6,8 @@
         android:label="bifrost"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:allowNativeHeapPointerTagging="false">
+        android:allowNativeHeapPointerTagging="false"
+        android:extractNativeLibs="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

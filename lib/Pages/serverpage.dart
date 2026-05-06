@@ -226,7 +226,10 @@ class _ServerPageState extends State<ServerPage> {
             ],
           ),
           const SizedBox(height: 10),
-          _TunnelPanel(server: server),
+          _TunnelPanel(
+            server: server,
+            tunnelLog: widget.serverManager.tunnelOutputFor(widget.serverPath),
+          ),
           const SizedBox(height: 10),
           Text(
             'Runtime Message',
@@ -310,22 +313,26 @@ class _HeroPanel extends StatelessWidget {
 }
 
 class _TunnelPanel extends StatelessWidget {
-  const _TunnelPanel({required this.server});
+  const _TunnelPanel({
+    required this.server,
+    this.tunnelLog = '',
+  });
 
   final BifrostServer server;
+  final String tunnelLog;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
     final String address = server.tunnelAddress?.trim() ?? '';
-    final String message = server.tunnelMessage?.trim().isNotEmpty == true
-        ? server.tunnelMessage!
-        : 'Start Playit after the server is online. First run may show a claim URL.';
+    final String? claimUrl = server.tunnelClaimUrl?.trim().isNotEmpty == true
+        ? server.tunnelClaimUrl
+        : null;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(18),
@@ -334,9 +341,10 @@ class _TunnelPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // Header row
           Row(
             children: <Widget>[
-              Icon(Icons.public_rounded, color: colors.primary),
+              Icon(Icons.public_rounded, color: colors.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 'Playit Tunnel',
@@ -351,29 +359,225 @@ class _TunnelPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          SelectableText(
-            address.isEmpty ? message : address,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: address.isEmpty ? FontWeight.w500 : FontWeight.w800,
-              color: address.isEmpty ? colors.onSurfaceVariant : colors.primary,
+
+          // ── Starting: info + live log ────────────────────────────────────
+          if (server.tunnelStatus == 'Starting') ...<Widget>[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Connecting to Playit servers…\n'
+                    'On first run a claim URL will appear below — '
+                    'copy it and open it in your browser.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 12),
+            // Log box — always shown while Starting so the user sees output arrive
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 60, maxHeight: 180),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: tunnelLog.trim().isEmpty
+                  ? Center(
+                      child: Text(
+                        'Waiting for agent output…',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant.withAlpha(120),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      reverse: true,
+                      child: SelectableText(
+                        tunnelLog,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          color: colors.onSurfaceVariant,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+
+          // ── Claim URL (first run) ────────────────────────────────────────
+          if (claimUrl != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.tertiaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.link_rounded,
+                        size: 18,
+                        color: colors.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'One-time setup required',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: colors.onTertiaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Copy this URL and open it in your browser to link the Playit agent to your account:',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onTertiaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    claimUrl,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onTertiaryContainer,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.tertiary,
+                      foregroundColor: colors.onTertiary,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: claimUrl));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Claim URL copied — paste it in your browser.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Copy Claim URL'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Active tunnel address ────────────────────────────────────────
           if (address.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Share this address with friends',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: colors.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    address,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: colors.onPrimaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: address));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Playit address copied.')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.copy_rounded),
-                label: const Text('Copy Address'),
+            FilledButton.tonalIcon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: address));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Address copied to clipboard.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('Copy Address'),
+            ),
+          ],
+
+          // ── Idle / no address ────────────────────────────────────────────
+          if (address.isEmpty && claimUrl == null &&
+              server.tunnelStatus != 'Starting') ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              server.tunnelMessage?.trim().isNotEmpty == true
+                  ? server.tunnelMessage!
+                  : 'Start Playit after the server is online to get a shareable address.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+
+          // ── Raw agent log ────────────────────────────────────────────────
+          if (tunnelLog.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              'Agent output',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 160),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: SelectableText(
+                  tunnelLog,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: colors.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ),
           ],

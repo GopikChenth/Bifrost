@@ -14,7 +14,10 @@ class BifrostServer {
     this.tunnelStatus = 'Off',
     this.tunnelAddress,
     this.tunnelMessage,
+    this.tunnelClaimUrl,
     this.isBusy = false,
+    this.tunnelState = 'idle',
+    this.tunnelPort,
   });
 
   final String name;
@@ -28,10 +31,20 @@ class BifrostServer {
   final String status;
   final String consoleLabel;
   final String? runtimeMessage;
+
+  // Persisted tunnel fields (Playit).
   final String tunnelStatus;
   final String? tunnelAddress;
   final String? tunnelMessage;
+
+  // Ephemeral — set when Playit agent outputs a first-run claim URL.
+  final String? tunnelClaimUrl;
+
   final bool isBusy;
+
+  // Ephemeral tunnel state — not persisted to disk.
+  final String tunnelState;
+  final int? tunnelPort;
 
   bool get isOnline => status == 'Running';
   bool get isTunnelOnline => tunnelStatus == 'Online';
@@ -68,7 +81,10 @@ class BifrostServer {
     String? tunnelStatus,
     String? tunnelAddress,
     String? tunnelMessage,
+    Object? tunnelClaimUrl = _sentinel,
     bool? isBusy,
+    String? tunnelState,
+    Object? tunnelPort = _sentinel,
   }) {
     return BifrostServer(
       name: name ?? this.name,
@@ -85,7 +101,14 @@ class BifrostServer {
       tunnelStatus: tunnelStatus ?? this.tunnelStatus,
       tunnelAddress: tunnelAddress ?? this.tunnelAddress,
       tunnelMessage: tunnelMessage ?? this.tunnelMessage,
+      tunnelClaimUrl: tunnelClaimUrl == _sentinel
+          ? this.tunnelClaimUrl
+          : tunnelClaimUrl as String?,
       isBusy: isBusy ?? this.isBusy,
+      tunnelState: tunnelState ?? this.tunnelState,
+      tunnelPort: tunnelPort == _sentinel ? this.tunnelPort : tunnelPort as int?,
     );
   }
+
+  static const Object _sentinel = Object();
 }
