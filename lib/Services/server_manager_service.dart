@@ -24,6 +24,8 @@ class ServerManagerService extends ChangeNotifier {
 
   final List<BifrostServer> _servers = <BifrostServer>[];
   final Map<String, String> _consoleOutputByServerPath = <String, String>{};
+  final Map<String, Set<String>> _knownPlayersByServerPath =
+      <String, Set<String>>{};
   Timer? _serverStatusPollTimer;
 
   bool isLoadingServers = true;
@@ -47,6 +49,13 @@ class ServerManagerService extends ChangeNotifier {
 
   String consoleOutputFor(String serverPath) {
     return _consoleOutputByServerPath[serverPath] ?? '';
+  }
+
+  List<String> knownPlayersFor(String serverPath) {
+    final List<String> players =
+        (_knownPlayersByServerPath[serverPath] ?? <String>{}).toList();
+    players.sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return players;
   }
 
   double? get downloadProgress {
@@ -590,6 +599,29 @@ class ServerManagerService extends ChangeNotifier {
     );
     if (status.consoleOutput.trim().isNotEmpty) {
       _consoleOutputByServerPath[serverPath] = status.consoleOutput;
+      _rememberPlayersFromConsole(serverPath, status.consoleOutput);
+    }
+  }
+
+  void _rememberPlayersFromConsole(String serverPath, String consoleOutput) {
+    final Set<String> players = _knownPlayersByServerPath.putIfAbsent(
+      serverPath,
+      () => <String>{},
+    );
+    final List<RegExp> patterns = <RegExp>[
+      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b'),
+      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b'),
+      RegExp(r'UUID of player ([A-Za-z0-9_]{3,16}) is\b'),
+    ];
+
+    for (final String line in consoleOutput.split('\n')) {
+      for (final RegExp pattern in patterns) {
+        final String? player = pattern.firstMatch(line)?.group(1);
+        if (player != null && player.trim().isNotEmpty) {
+          players.add(player.trim());
+          break;
+        }
+      }
     }
   }
 

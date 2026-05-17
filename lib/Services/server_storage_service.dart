@@ -480,32 +480,24 @@ class ServerStorageService {
   Future<Map<String, List<String>>> readPlayerAccessLists(
     String serverPath,
   ) async {
-    try {
-      return <String, List<String>>{
-        'whitelist': await _readJsonListValues(
-          File(path.join(serverPath, 'whitelist.json')),
-          valueKey: 'name',
-        ),
-        'ops': await _readJsonListValues(
-          File(path.join(serverPath, 'ops.json')),
-          valueKey: 'name',
-        ),
-        'bannedPlayers': await _readJsonListValues(
-          File(path.join(serverPath, 'banned-players.json')),
-          valueKey: 'name',
-        ),
-        'bannedIps': await _readJsonListValues(
-          File(path.join(serverPath, 'banned-ips.json')),
-          valueKey: 'ip',
-        ),
-      };
-    } on FileSystemException catch (error) {
-      throw ServerStorageException(
-        'Unable to read player access files at ${error.path ?? serverPath}: ${error.message}',
-      );
-    } catch (error) {
-      throw ServerStorageException('Unable to read player access lists: $error');
-    }
+    return <String, List<String>>{
+      'whitelist': await _readJsonListValues(
+        File(path.join(serverPath, 'whitelist.json')),
+        valueKey: 'name',
+      ),
+      'ops': await _readJsonListValues(
+        File(path.join(serverPath, 'ops.json')),
+        valueKey: 'name',
+      ),
+      'bannedPlayers': await _readJsonListValues(
+        File(path.join(serverPath, 'banned-players.json')),
+        valueKey: 'name',
+      ),
+      'bannedIps': await _readJsonListValues(
+        File(path.join(serverPath, 'banned-ips.json')),
+        valueKey: 'ip',
+      ),
+    };
   }
 
   Future<bool> isEulaAccepted(String serverPath) async {
@@ -742,27 +734,40 @@ class ServerStorageService {
     File file, {
     required String valueKey,
   }) async {
-    if (!await file.exists()) {
+    try {
+      if (!await file.exists()) {
+        return <String>[];
+      }
+
+      final String content = await file.readAsString();
+      if (content.trim().isEmpty) {
+        return <String>[];
+      }
+
+      final Object? decoded = jsonDecode(content);
+      if (decoded is! List<dynamic>) {
+        return <String>[];
+      }
+
+      final List<String> values = <String>[];
+      for (final Object? item in decoded) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? value = item[valueKey] as String?;
+        if (value != null && value.trim().isNotEmpty) {
+          values.add(value.trim());
+        }
+      }
+      values.sort(
+        (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
+      );
+      return values;
+    } on FileSystemException {
+      return <String>[];
+    } on FormatException {
       return <String>[];
     }
-
-    final Object? decoded = jsonDecode(await file.readAsString());
-    if (decoded is! List<dynamic>) {
-      return <String>[];
-    }
-
-    final List<String> values = <String>[];
-    for (final Object? item in decoded) {
-      if (item is! Map<String, dynamic>) {
-        continue;
-      }
-      final String? value = item[valueKey] as String?;
-      if (value != null && value.trim().isNotEmpty) {
-        values.add(value.trim());
-      }
-    }
-    values.sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return values;
   }
 
   String? _propertyLineKey(String line) {
