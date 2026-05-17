@@ -4,6 +4,7 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
+import 'package:bifrost/Pages/world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:flutter/material.dart';
 
@@ -409,6 +410,19 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
         },
         onOpenPlayers: () {
           Navigator.of(context).pop();
+        },
+        onOpenWorld: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute<WorldPage>(
+              builder: (BuildContext context) {
+                return WorldPage(
+                  serverPath: server.path,
+                  serverManager: widget.serverManager,
+                );
+              },
+            ),
+          );
         },
         onOpenSettings: () {
           Navigator.of(context).pop();

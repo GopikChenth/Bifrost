@@ -412,6 +412,55 @@ class ServerManagerService extends ChangeNotifier {
     return _serverStorageService.readServerProperties(server.path);
   }
 
+  Future<String> resolveWorldDirectoryPath(BifrostServer server) {
+    return _serverStorageService.resolveWorldDirectoryPath(server.path);
+  }
+
+  Future<String?> exportWorldBackup(BifrostServer server) async {
+    try {
+      final String destination = await _serverStorageService.exportWorldBackup(
+        server.path,
+      );
+      return 'World exported to $destination';
+    } on ServerStorageException catch (error) {
+      _updateServer(server.path, runtimeMessage: error.message);
+      return error.message;
+    }
+  }
+
+  Future<String?> importWorldFromDirectory({
+    required BifrostServer server,
+    required String sourcePath,
+  }) async {
+    if (server.isOnline || server.isBusy) {
+      return 'Stop the server before uploading a world.';
+    }
+    try {
+      await _serverStorageService.importWorldFromDirectory(
+        serverPath: server.path,
+        sourcePath: sourcePath,
+      );
+      return 'World uploaded from $sourcePath';
+    } on ServerStorageException catch (error) {
+      _updateServer(server.path, runtimeMessage: error.message);
+      return error.message;
+    }
+  }
+
+  Future<String?> regenerateWorld(BifrostServer server) async {
+    if (server.isOnline || server.isBusy) {
+      return 'Stop the server before regenerating the world.';
+    }
+    try {
+      final String seed = await _serverStorageService
+          .regenerateWorldWithRandomSeed(server.path);
+      return 'World regenerated with seed $seed';
+    } on ServerStorageException catch (error) {
+      _updateServer(server.path, runtimeMessage: error.message);
+      return error.message;
+    }
+  }
+
   Future<Map<String, List<String>>> readPlayerAccessLists(
     BifrostServer server,
   ) {

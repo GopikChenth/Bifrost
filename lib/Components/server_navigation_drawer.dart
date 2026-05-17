@@ -9,6 +9,7 @@ class ServerNavigationDrawer extends StatelessWidget {
     required this.onOpenTerminal,
     required this.onOpenSettings,
     required this.onOpenPlayers,
+    required this.onOpenWorld,
   });
 
   final BifrostServer server;
@@ -16,6 +17,7 @@ class ServerNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenTerminal;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenPlayers;
+  final VoidCallback onOpenWorld;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +75,12 @@ class ServerNavigationDrawer extends StatelessWidget {
               title: const Text('Players'),
               subtitle: const Text('Whitelist, ops, bans, and IP bans'),
               onTap: onOpenPlayers,
+            ),
+            ListTile(
+              leading: const Icon(Icons.public_rounded),
+              title: const Text('World'),
+              subtitle: const Text('Backups, upload, files, and generation'),
+              onTap: onOpenWorld,
             ),
             ListTile(
               leading: const Icon(Icons.tune_rounded),

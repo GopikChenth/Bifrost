@@ -477,6 +477,103 @@ class ServerStorageService {
     }
   }
 
+  Future<String> resolveWorldDirectoryPath(String serverPath) async {
+    final Map<String, String> properties = await readServerProperties(serverPath);
+    final String levelName = properties['level-name']?.trim().isNotEmpty == true
+        ? properties['level-name']!.trim()
+        : 'world';
+    return path.join(serverPath, levelName);
+  }
+
+  Future<String> exportWorldBackup(String serverPath) async {
+    try {
+      final String worldPath = await resolveWorldDirectoryPath(serverPath);
+      final Directory worldDirectory = Directory(worldPath);
+      if (!await worldDirectory.exists()) {
+        throw const ServerStorageException('World folder does not exist yet.');
+      }
+
+      final Directory backupsDirectory = Directory(path.join(serverPath, 'backups'));
+      await backupsDirectory.create(recursive: true);
+      final String stamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final Directory destination = Directory(
+        path.join(backupsDirectory.path, 'world-export-$stamp'),
+      );
+      await _copyDirectory(worldDirectory, destination);
+      return destination.path;
+    } on ServerStorageException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to export world at ${error.path ?? serverPath}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to export world: $error');
+    }
+  }
+
+  Future<void> importWorldFromDirectory({
+    required String serverPath,
+    required String sourcePath,
+  }) async {
+    try {
+      final Directory sourceDirectory = Directory(sourcePath);
+      if (!await sourceDirectory.exists()) {
+        throw const ServerStorageException('Selected world folder does not exist.');
+      }
+
+      final String worldPath = await resolveWorldDirectoryPath(serverPath);
+      final Directory worldDirectory = Directory(worldPath);
+      if (await worldDirectory.exists()) {
+        final Directory backupsDirectory = Directory(path.join(serverPath, 'backups'));
+        await backupsDirectory.create(recursive: true);
+        final String stamp = DateTime.now().millisecondsSinceEpoch.toString();
+        await _copyDirectory(
+          worldDirectory,
+          Directory(path.join(backupsDirectory.path, 'world-before-import-$stamp')),
+        );
+        await worldDirectory.delete(recursive: true);
+      }
+
+      await _copyDirectory(sourceDirectory, worldDirectory);
+    } on ServerStorageException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to import world at ${error.path ?? sourcePath}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to import world: $error');
+    }
+  }
+
+  Future<String> regenerateWorldWithRandomSeed(String serverPath) async {
+    try {
+      final String seed = DateTime.now().microsecondsSinceEpoch.toString();
+      final String worldPath = await resolveWorldDirectoryPath(serverPath);
+      final Directory worldDirectory = Directory(worldPath);
+      if (await worldDirectory.exists()) {
+        final Directory backupsDirectory = Directory(path.join(serverPath, 'backups'));
+        await backupsDirectory.create(recursive: true);
+        await _copyDirectory(
+          worldDirectory,
+          Directory(path.join(backupsDirectory.path, 'world-before-regenerate-$seed')),
+        );
+        await worldDirectory.delete(recursive: true);
+      }
+      await updateServerProperty(serverPath: serverPath, key: 'level-seed', value: seed);
+      return seed;
+    } on ServerStorageException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      throw ServerStorageException(
+        'Unable to regenerate world at ${error.path ?? serverPath}: ${error.message}',
+      );
+    } catch (error) {
+      throw ServerStorageException('Unable to regenerate world: $error');
+    }
+  }
+
   Future<Map<String, List<String>>> readPlayerAccessLists(
     String serverPath,
   ) async {
@@ -686,6 +783,24 @@ class ServerStorageService {
     return directory;
   }
 
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    if (!await destination.exists()) {
+      await destination.create(recursive: true);
+    }
+
+    await for (final FileSystemEntity entity in source.list(recursive: false)) {
+      final String destinationPath = path.join(
+        destination.path,
+        path.basename(entity.path),
+      );
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(destinationPath));
+      } else if (entity is File) {
+        await entity.copy(destinationPath);
+      }
+    }
+  }
+
   String _slugify(String input) {
     final String lower = input.trim().toLowerCase();
     final String hyphenated = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
@@ -698,6 +813,8 @@ class ServerStorageService {
       '# Bifrost generated server.properties',
       'motd=${server.name}',
       'level-name=world',
+      'level-seed=',
+      'hardcore=false',
       'online-mode=true',
       'white-list=false',
       'allow-flight=false',
