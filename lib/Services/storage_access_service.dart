@@ -16,6 +16,22 @@ class StorageAccessService {
     'bifrost/storage_access',
   );
 
+  Future<Map<String, Object?>?> pickDirectory() async {
+    try {
+      final Map<Object?, Object?>? result = await _channel
+          .invokeMapMethod<Object?, Object?>('pickDirectory');
+      return result?.map(
+        (Object? key, Object? value) => MapEntry(key.toString(), value),
+      );
+    } on PlatformException catch (error) {
+      throw StorageAccessException(error.message ?? 'Unable to pick folder.');
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
+    }
+  }
+
   Future<Map<String, Object?>> createServerStructure({
     required String treeUri,
     required String serverName,
@@ -56,6 +72,10 @@ class StorageAccessService {
           .toList();
     } on PlatformException catch (error) {
       throw StorageAccessException(error.message ?? 'Unable to load servers.');
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
     }
   }
 
@@ -90,6 +110,10 @@ class StorageAccessService {
       throw StorageAccessException(
         error.message ?? 'Unable to write server metadata.',
       );
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
     }
   }
 
@@ -111,6 +135,10 @@ class StorageAccessService {
       throw StorageAccessException(
         error.message ?? 'Unable to delete the server directory.',
       );
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
     }
   }
 
@@ -121,6 +149,26 @@ class StorageAccessService {
       'prepareServerLaunch',
       <String, Object?>{'serverUri': serverUri},
     );
+  }
+
+  Future<bool> isEulaAccepted({
+    required String serverUri,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'isEulaAccepted',
+            <String, Object?>{'serverUri': serverUri},
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      throw StorageAccessException(
+        error.message ?? 'Unable to read EULA state.',
+      );
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
+    }
   }
 
   Future<Map<String, Object?>> copyServerToDirectory({
@@ -152,7 +200,26 @@ class StorageAccessService {
       throw StorageAccessException(
         error.message ?? 'Unable to sync server files.',
       );
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
     }
+  }
+
+  Future<Map<String, Object?>> copyDirectoryToTree({
+    required String treeUri,
+    required String sourcePath,
+    required String targetName,
+  }) {
+    return _invokeMap(
+      'copyDirectoryToTree',
+      <String, Object?>{
+        'treeUri': treeUri,
+        'sourcePath': sourcePath,
+        'targetName': targetName,
+      },
+    );
   }
 
   Future<Map<String, Object?>> _invokeMap(
@@ -169,6 +236,10 @@ class StorageAccessService {
           <String, Object?>{};
     } on PlatformException catch (error) {
       throw StorageAccessException(error.message ?? 'Storage access failed.');
+    } on MissingPluginException {
+      throw const StorageAccessException(
+        'Android storage bridge is not available. Stop the app and run a full rebuild.',
+      );
     }
   }
 }

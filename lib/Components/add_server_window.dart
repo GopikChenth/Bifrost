@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:bifrost/Services/official_server_download_service.dart';
+import 'package:bifrost/Services/paper_jar_service.dart';
+import 'package:bifrost/Services/vanilla_jar_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -28,13 +29,13 @@ class AddServerWindow extends StatefulWidget {
 
 class _AddServerWindowState extends State<AddServerWindow> {
   static const List<String> _serverTypes = <String>[
-    'Paper',
     'Vanilla',
-    'Forge',
+    'Paper',
   ];
 
   final OfficialServerDownloadService _downloadService =
       const OfficialServerDownloadService();
+  final PaperJarService _paperJarService = const PaperJarService();
   final TextEditingController _nameController = TextEditingController();
   List<String> _availableVersions = <String>[];
   String? _selectedVersion;
@@ -123,10 +124,12 @@ class _AddServerWindowState extends State<AddServerWindow> {
     });
 
     try {
-      final List<String> versions = await _downloadService.getAvailableVersions(
-        serverType,
-        forceRefresh: forceRefresh,
-      );
+      final List<String> versions = serverType.toLowerCase() == 'paper'
+          ? await _paperJarService.getAvailableVersions()
+          : await _downloadService.getAvailableVersions(
+              serverType,
+              forceRefresh: forceRefresh,
+            );
 
       if (!mounted) {
         return;
@@ -140,6 +143,14 @@ class _AddServerWindowState extends State<AddServerWindow> {
             : null;
       });
     } on OfficialServerDownloadException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _versionStatusText = error.message;
+      });
+    } on PaperJarDownloadException catch (error) {
       if (!mounted) {
         return;
       }

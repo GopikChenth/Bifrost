@@ -332,98 +332,204 @@ class ServerStorageService {
       if (_usesCustomTreeStorage(settings) &&
           serverUri != null &&
           serverUri.trim().isNotEmpty) {
-        final Map<String, Object?> launchResult =
-            await _storageAccessService.prepareServerLaunch(
-              serverUri: serverUri,
+        try {
+          final Map<String, Object?> launchResult =
+              await _storageAccessService.prepareServerLaunch(
+                serverUri: serverUri,
+              );
+          final String safServerPath =
+              (launchResult['serverPath'] as String?)?.trim().isNotEmpty == true
+              ? launchResult['serverPath'] as String
+              : serverPath;
+          final String safJarFilePath =
+              ((launchResult['jarPath'] as String?) ?? '').trim();
+
+          if (safJarFilePath.isEmpty) {
+            throw const ServerStorageException(
+              'No downloaded server jar is registered for this server yet.',
             );
-        final String safServerPath =
-            (launchResult['serverPath'] as String?)?.trim().isNotEmpty == true
-            ? launchResult['serverPath'] as String
-            : serverPath;
-        final String safJarFilePath =
-            ((launchResult['jarPath'] as String?) ?? '').trim();
+          }
 
-        if (safJarFilePath.isEmpty) {
-          throw const ServerStorageException(
-            'No downloaded server jar is registered for this server yet.',
-          );
-        }
+          final String mirrorPath = await _resolveRuntimeMirrorPath(safServerPath);
+          final Map<String, Object?> mirroredLaunch =
+              await _storageAccessService.copyServerToDirectory(
+                serverUri: serverUri,
+                destinationPath: mirrorPath,
+              );
+          final String resolvedServerPath =
+              ((mirroredLaunch['serverPath'] as String?) ?? mirrorPath).trim();
+          final String jarFilePath =
+              ((mirroredLaunch['jarPath'] as String?) ?? '').trim();
 
-        final String mirrorPath = await _resolveRuntimeMirrorPath(safServerPath);
-        final Map<String, Object?> mirroredLaunch =
-            await _storageAccessService.copyServerToDirectory(
-              serverUri: serverUri,
-              destinationPath: mirrorPath,
+          if (jarFilePath.isEmpty || !await File(jarFilePath).exists()) {
+            throw ServerStorageException(
+              'The server jar could not be prepared in app storage for launch.',
             );
-        final String resolvedServerPath =
-            ((mirroredLaunch['serverPath'] as String?) ?? mirrorPath).trim();
-        final String jarFilePath =
-            ((mirroredLaunch['jarPath'] as String?) ?? '').trim();
+          }
 
-        if (jarFilePath.isEmpty || !await File(jarFilePath).exists()) {
-          throw ServerStorageException(
-            'The server jar could not be prepared in app storage for launch.',
+          final File metadataFile = File(
+            path.join(resolvedServerPath, 'bifrost_server.json'),
           );
-        }
+          await _repairLaunchDirectoryForServer(
+            serverDirectory: Directory(resolvedServerPath),
+            metadataFile: metadataFile,
+          );
 
-        return ServerLaunchConfig(
-          serverDirectory: Directory(resolvedServerPath),
-          jarFilePath: jarFilePath,
-          maxRamMb: _parseMemoryLabelToMb(memoryLabel),
-          metadataFile: File(path.join(resolvedServerPath, 'bifrost_server.json')),
-        );
+          return ServerLaunchConfig(
+            serverDirectory: Directory(resolvedServerPath),
+            jarFilePath: jarFilePath,
+            maxRamMb: _parseMemoryLabelToMb(memoryLabel),
+            metadataFile: metadataFile,
+          );
+        } on ServerStorageException {
+          rethrow;
+        } on StorageAccessException {
+          // SAF permission revoked — fall through to direct filesystem
+          // path. The server data still exists on disk, only the SAF
+          // URI permission was lost.
+        } catch (_) {
+          // Binder or cursor failure — fall through.
+        }
       }
 
+      // Try the direct filesystem path first.
       final Directory serverDirectory = Directory(serverPath);
-      if (!await serverDirectory.exists()) {
-        throw const ServerStorageException(
-          'The selected server directory no longer exists.',
+      final bool serverDirExists = await serverDirectory.exists();
+
+      if (serverDirExists) {
+        final File metadataFile = File(
+          path.join(serverDirectory.path, 'bifrost_server.json'),
         );
+        if (await metadataFile.exists()) {
+          final Map<String, dynamic> metadata =
+              jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
+          final Map<String, dynamic>? download =
+              metadata['download'] as Map<String, dynamic>?;
+          final String? jarFilePath = download?['path'] as String?;
+
+          if (jarFilePath != null && jarFilePath.trim().isNotEmpty) {
+            final File jarFile = File(jarFilePath);
+            if (await jarFile.exists()) {
+              await _repairLaunchDirectoryForServer(
+                serverDirectory: serverDirectory,
+                metadataFile: metadataFile,
+              );
+
+              return ServerLaunchConfig(
+                serverDirectory: serverDirectory,
+                jarFilePath: jarFile.path,
+                maxRamMb: _parseMemoryLabelToMb(memoryLabel),
+                metadataFile: metadataFile,
+              );
+            }
+          }
+        }
       }
 
-      final File metadataFile = File(
-        path.join(serverDirectory.path, 'bifrost_server.json'),
-      );
-      if (!await metadataFile.exists()) {
-        throw const ServerStorageException(
-          'bifrost_server.json is missing for this server.',
+      // Direct path failed (scoped storage or missing files).
+      // Try the runtime mirror in app-internal storage.
+      final String mirrorPath = await _resolveRuntimeMirrorPath(serverPath);
+      final Directory mirrorDirectory = Directory(mirrorPath);
+      if (await mirrorDirectory.exists()) {
+        final File mirrorMetadataFile = File(
+          path.join(mirrorPath, 'bifrost_server.json'),
         );
+        if (await mirrorMetadataFile.exists()) {
+          final Map<String, dynamic> mirrorMetadata =
+              jsonDecode(await mirrorMetadataFile.readAsString())
+                  as Map<String, dynamic>;
+          final Map<String, dynamic>? mirrorDownload =
+              mirrorMetadata['download'] as Map<String, dynamic>?;
+          final String? mirrorJarPath = mirrorDownload?['path'] as String?;
+
+          if (mirrorJarPath != null && mirrorJarPath.trim().isNotEmpty) {
+            final File mirrorJar = File(mirrorJarPath);
+            if (await mirrorJar.exists()) {
+              await _repairLaunchDirectoryForServer(
+                serverDirectory: mirrorDirectory,
+                metadataFile: mirrorMetadataFile,
+              );
+
+              return ServerLaunchConfig(
+                serverDirectory: mirrorDirectory,
+                jarFilePath: mirrorJar.path,
+                maxRamMb: _parseMemoryLabelToMb(memoryLabel),
+                metadataFile: mirrorMetadataFile,
+              );
+            }
+          }
+        }
       }
 
-      final Map<String, dynamic> metadata =
-          jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
-      final Map<String, dynamic>? download =
-          metadata['download'] as Map<String, dynamic>?;
-      final String? jarFilePath = download?['path'] as String?;
-
-      if (jarFilePath == null || jarFilePath.trim().isEmpty) {
-        throw const ServerStorageException(
-          'No downloaded server jar is registered for this server yet.',
-        );
-      }
-
-      final File jarFile = File(jarFilePath);
-      if (!await jarFile.exists()) {
-        throw ServerStorageException(
-          'The configured server jar was not found at $jarFilePath.',
-        );
-      }
-
-      return ServerLaunchConfig(
-        serverDirectory: serverDirectory,
-        jarFilePath: jarFile.path,
-        maxRamMb: _parseMemoryLabelToMb(memoryLabel),
-        metadataFile: metadataFile,
-      );
-    } on ServerStorageException {
-      rethrow;
-    } on FileSystemException catch (error) {
-      throw ServerStorageException(
-        'Unable to prepare server launch at ${error.path ?? serverPath}: ${error.message}',
+      // Neither SAF, direct path, nor mirror worked.
+      throw const ServerStorageException(
+        'Storage permission was lost and no cached server files are available. '
+        'Go to Settings and re-select your server storage directory.',
       );
     } catch (error) {
+      if (error is ServerStorageException) rethrow;
       throw ServerStorageException('Unable to prepare the server launch: $error');
     }
+  }
+
+  Future<void> _repairLaunchDirectoryForServer({
+    required Directory serverDirectory,
+    required File metadataFile,
+  }) async {
+    if (!await metadataFile.exists()) {
+      return;
+    }
+
+    final Map<String, dynamic> metadata =
+        jsonDecode(await metadataFile.readAsString()) as Map<String, dynamic>;
+    if (!_isPaperServerMetadata(metadata)) {
+      return;
+    }
+
+    await _repairPaperExtractionCache(serverDirectory);
+  }
+
+  bool _isPaperServerMetadata(Map<String, dynamic> metadata) {
+    final String type = (metadata['type'] as String? ?? '').toLowerCase();
+    final Map<String, dynamic>? download =
+        metadata['download'] as Map<String, dynamic>?;
+    final String project = (download?['project'] as String? ?? '').toLowerCase();
+    return type == 'paper' || project == 'paper';
+  }
+
+  Future<void> _repairPaperExtractionCache(Directory serverDirectory) async {
+    final Directory librariesDirectory = Directory(
+      path.join(serverDirectory.path, 'libraries'),
+    );
+    if (!await librariesDirectory.exists()) {
+      return;
+    }
+
+    final bool hasPaperPathConflict =
+        await _hasPaperLibraryPathConflict(librariesDirectory);
+    if (!hasPaperPathConflict) {
+      return;
+    }
+
+    await librariesDirectory.delete(recursive: true);
+  }
+
+  Future<bool> _hasPaperLibraryPathConflict(Directory librariesDirectory) async {
+    await for (final FileSystemEntity groupEntity
+        in librariesDirectory.list(followLinks: false)) {
+      if (groupEntity is! Directory) {
+        return true;
+      }
+
+      await for (final FileSystemEntity artifactEntity
+          in groupEntity.list(followLinks: false)) {
+        if (artifactEntity is File) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   Future<void> syncRuntimeMirrorToServer({
@@ -512,6 +618,40 @@ class ServerStorageService {
     }
   }
 
+  Future<String> syncWorldBackupToTree({
+    required String serverPath,
+    required String treeUri,
+  }) async {
+    try {
+      final String worldPath = await resolveWorldDirectoryPath(serverPath);
+      final Directory worldDirectory = Directory(worldPath);
+      if (!await worldDirectory.exists()) {
+        throw const ServerStorageException('World folder does not exist yet.');
+      }
+
+      final String serverName = _slugify(path.basename(serverPath));
+      final String stamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String targetName = '$serverName-world-backup-$stamp';
+      final Map<String, Object?> result = await _storageAccessService
+          .copyDirectoryToTree(
+            treeUri: treeUri,
+            sourcePath: worldDirectory.path,
+            targetName: targetName,
+          );
+      return (result['path'] as String?) ?? targetName;
+    } on ServerStorageException {
+      rethrow;
+    } on StorageAccessException catch (error) {
+      throw ServerStorageException(error.message);
+    } catch (error) {
+      throw ServerStorageException('Unable to sync world backup: $error');
+    }
+  }
+
+  Future<Map<String, Object?>?> pickBackupDirectory() {
+    return _storageAccessService.pickDirectory();
+  }
+
   Future<void> importWorldFromDirectory({
     required String serverPath,
     required String sourcePath,
@@ -597,8 +737,25 @@ class ServerStorageService {
     };
   }
 
-  Future<bool> isEulaAccepted(String serverPath) async {
+  Future<bool> isEulaAccepted(
+    String serverPath, {
+    String? serverUri,
+  }) async {
     try {
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings) &&
+          serverUri != null &&
+          serverUri.trim().isNotEmpty) {
+        try {
+          return await _storageAccessService.isEulaAccepted(serverUri: serverUri);
+        } on StorageAccessException {
+          // SAF permission revoked — fall through to direct filesystem.
+        } catch (_) {
+          // Binder or cursor failure — fall through to direct filesystem.
+        }
+      }
+
       final File eulaFile = File(path.join(serverPath, 'eula.txt'));
       if (!await eulaFile.exists()) {
         return false;
@@ -607,19 +764,65 @@ class ServerStorageService {
         await eulaFile.readAsString(),
       );
       return eulaProperties['eula']?.toLowerCase() == 'true';
-    } on FileSystemException catch (error) {
-      throw ServerStorageException(
-        'Unable to read eula.txt at ${error.path ?? serverPath}: ${error.message}',
-      );
+    } on FileSystemException {
+      // Direct filesystem path is inaccessible (scoped storage).
+      // Try reading from the runtime mirror in app-internal storage.
+      try {
+        final String mirrorPath = await _resolveRuntimeMirrorPath(serverPath);
+        final File mirrorEula = File(path.join(mirrorPath, 'eula.txt'));
+        if (await mirrorEula.exists()) {
+          final Map<String, String> mirrorProperties = _parseServerProperties(
+            await mirrorEula.readAsString(),
+          );
+          return mirrorProperties['eula']?.toLowerCase() == 'true';
+        }
+      } catch (_) {
+        // Mirror also unavailable.
+      }
+      return false;
+    } on StorageAccessException catch (error) {
+      throw ServerStorageException(error.message);
     } catch (error) {
       throw ServerStorageException('Unable to read EULA state: $error');
     }
   }
 
-  Future<void> acceptEula(String serverPath) async {
+  Future<void> acceptEula(
+    String serverPath, {
+    String? serverUri,
+  }) async {
     try {
-      final File eulaFile = File(path.join(serverPath, 'eula.txt'));
-      await eulaFile.writeAsString('eula=true\n');
+      final ServerDirectorySettings settings =
+          await _settingsRepository.loadServerDirectorySettings();
+      if (_usesCustomTreeStorage(settings) &&
+          serverUri != null &&
+          serverUri.trim().isNotEmpty) {
+        try {
+          await _storageAccessService.prepareServerLaunch(serverUri: serverUri);
+          return;
+        } on StorageAccessException {
+          // SAF permission revoked — fall through.
+        } catch (_) {
+          // Binder failure — fall through.
+        }
+      }
+
+      // Try writing eula.txt directly to the server path.
+      try {
+        final File eulaFile = File(path.join(serverPath, 'eula.txt'));
+        await eulaFile.writeAsString('eula=true\n');
+        return;
+      } on FileSystemException {
+        // Direct path failed (scoped storage) — try runtime mirror.
+      }
+
+      // Fall back to the runtime mirror in app-internal storage.
+      // This is where the server actually runs from.
+      final String mirrorPath = await _resolveRuntimeMirrorPath(serverPath);
+      final Directory mirrorDir = Directory(mirrorPath);
+      await mirrorDir.create(recursive: true);
+      final File mirrorEula = File(path.join(mirrorPath, 'eula.txt'));
+      await mirrorEula.writeAsString('eula=true\n');
     } on FileSystemException catch (error) {
       throw ServerStorageException(
         'Unable to write eula.txt at ${error.path ?? serverPath}: ${error.message}',

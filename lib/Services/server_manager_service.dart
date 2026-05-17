@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
-import 'package:bifrost/Services/official_server_download_service.dart';
+import 'package:bifrost/Services/paper_jar_service.dart';
+import 'package:bifrost/Services/vanilla_jar_service.dart';
 import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Services/local_runtime_service.dart';
 import 'package:bifrost/Utils/local_runtime_models.dart';
@@ -12,13 +14,16 @@ class ServerManagerService extends ChangeNotifier {
   ServerManagerService({
     OfficialServerDownloadService officialServerDownloadService =
         const OfficialServerDownloadService(),
+    PaperJarService paperJarService = const PaperJarService(),
     ServerStorageService serverStorageService = const ServerStorageService(),
     LocalRuntimeService localRuntimeService = const LocalRuntimeService(),
   }) : _officialServerDownloadService = officialServerDownloadService,
+       _paperJarService = paperJarService,
        _serverStorageService = serverStorageService,
        _localRuntimeService = localRuntimeService;
 
   final OfficialServerDownloadService _officialServerDownloadService;
+  final PaperJarService _paperJarService;
   final ServerStorageService _serverStorageService;
   final LocalRuntimeService _localRuntimeService;
 
@@ -54,7 +59,9 @@ class ServerManagerService extends ChangeNotifier {
   List<String> knownPlayersFor(String serverPath) {
     final List<String> players =
         (_knownPlayersByServerPath[serverPath] ?? <String>{}).toList();
-    players.sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    players.sort(
+      (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
+    );
     return players;
   }
 
@@ -96,22 +103,8 @@ class ServerManagerService extends ChangeNotifier {
     try {
       final ServerStorageResult storageResult = await _serverStorageService
           .createServerStructure(newServer);
-      final OfficialServerArtifact artifact =
-          await _officialServerDownloadService.resolveArtifact(newServer);
-
-      activeDownloadFileName = artifact.fileName;
-      notifyListeners();
-
-      final OfficialServerDownloadResult downloadResult =
-          await _officialServerDownloadService.downloadResolvedArtifact(
-            artifact: artifact,
-            storage: storageResult,
-            onProgress: (int receivedBytes, int? totalBytes) {
-              downloadedBytes = receivedBytes;
-              totalDownloadBytes = totalBytes;
-              notifyListeners();
-            },
-          );
+      final _ResolvedServerDownload downloadResult =
+          await _downloadServerJar(newServer, storageResult);
 
       await _serverStorageService.writeDownloadMetadata(
         storage: storageResult,
@@ -132,6 +125,9 @@ class ServerManagerService extends ChangeNotifier {
     } on OfficialServerDownloadException catch (error) {
       lastErrorMessage = error.message;
       return error.message;
+    } on PaperJarDownloadException catch (error) {
+      lastErrorMessage = error.message;
+      return error.message;
     } on ServerStorageException catch (error) {
       lastErrorMessage = error.message;
       return error.message;
@@ -146,6 +142,46 @@ class ServerManagerService extends ChangeNotifier {
       totalDownloadBytes = null;
       notifyListeners();
     }
+  }
+
+  Future<_ResolvedServerDownload> _downloadServerJar(
+    AddServerResult newServer,
+    ServerStorageResult storageResult,
+  ) async {
+    if (newServer.serverType.toLowerCase() == 'paper') {
+      final PaperJarArtifact artifact = await _paperJarService.resolveArtifact(
+        newServer.version,
+      );
+      activeDownloadFileName = artifact.fileName;
+      notifyListeners();
+      final PaperJarDownloadResult result = await _paperJarService
+          .downloadResolvedArtifact(
+            artifact: artifact,
+            storage: storageResult,
+            onProgress: (int receivedBytes, int? totalBytes) {
+              downloadedBytes = receivedBytes;
+              totalDownloadBytes = totalBytes;
+              notifyListeners();
+            },
+          );
+      return _ResolvedServerDownload.fromPaper(result);
+    }
+
+    final OfficialServerArtifact artifact = await _officialServerDownloadService
+        .resolveArtifact(newServer);
+    activeDownloadFileName = artifact.fileName;
+    notifyListeners();
+    final OfficialServerDownloadResult result =
+        await _officialServerDownloadService.downloadResolvedArtifact(
+          artifact: artifact,
+          storage: storageResult,
+          onProgress: (int receivedBytes, int? totalBytes) {
+            downloadedBytes = receivedBytes;
+            totalDownloadBytes = totalBytes;
+            notifyListeners();
+          },
+        );
+    return _ResolvedServerDownload.fromOfficial(result);
   }
 
   Future<String?> deleteServer(BifrostServer server) async {
@@ -179,7 +215,7 @@ class ServerManagerService extends ChangeNotifier {
     );
 
     try {
-      final int runtimeMajor = _runtimeMajorForVersion(server.version);
+      final int runtimeMajor = _runtimeMajorForServer(server);
       final LocalRuntimeStatus preparedStatus = await _localRuntimeService
           .prepareBundledRuntimeHome(runtimeMajor: runtimeMajor);
       final LocalRuntimeTestResult testResult = await _localRuntimeService
@@ -241,7 +277,7 @@ class ServerManagerService extends ChangeNotifier {
             serverUri: server.serverUri,
           );
 
-      final int runtimeMajor = _runtimeMajorForVersion(server.version);
+      final int runtimeMajor = _runtimeMajorForServer(server);
       final LocalServerStatus status = await _localRuntimeService.startServer(
         serverPath: launchConfig.serverDirectory.path,
         jarPath: launchConfig.jarFilePath,
@@ -428,6 +464,23 @@ class ServerManagerService extends ChangeNotifier {
     }
   }
 
+  Future<String?> syncWorldBackup(BifrostServer server) async {
+    try {
+      final Map<String, Object?>? directory = await _serverStorageService
+          .pickBackupDirectory();
+      final String? treeUri = directory?['uri'] as String?;
+      if (treeUri == null || treeUri.trim().isEmpty) {
+        return 'Backup sync cancelled.';
+      }
+      final String destination = await _serverStorageService
+          .syncWorldBackupToTree(serverPath: server.path, treeUri: treeUri);
+      return 'World backup synced to $destination';
+    } on ServerStorageException catch (error) {
+      _updateServer(server.path, runtimeMessage: error.message);
+      return error.message;
+    }
+  }
+
   Future<String?> importWorldFromDirectory({
     required BifrostServer server,
     required String sourcePath,
@@ -467,13 +520,27 @@ class ServerManagerService extends ChangeNotifier {
     return _serverStorageService.readPlayerAccessLists(server.path);
   }
 
-  Future<bool> isEulaAccepted(BifrostServer server) {
-    return _serverStorageService.isEulaAccepted(server.path);
+  Future<bool> isEulaAccepted(BifrostServer server) async {
+    try {
+      return await _serverStorageService.isEulaAccepted(
+        server.path,
+        serverUri: server.serverUri,
+      );
+    } on ServerStorageException {
+      return false;
+    } catch (_) {
+      // SAF permission revoked, binder failure, or other transient error.
+      // Treat as "not accepted" so the EULA dialog is shown instead of crashing.
+      return false;
+    }
   }
 
   Future<String?> acceptEula(BifrostServer server) async {
     try {
-      await _serverStorageService.acceptEula(server.path);
+      await _serverStorageService.acceptEula(
+        server.path,
+        serverUri: server.serverUri,
+      );
       return null;
     } on ServerStorageException catch (error) {
       _updateServer(server.path, runtimeMessage: error.message);
@@ -538,19 +605,54 @@ class ServerManagerService extends ChangeNotifier {
     );
   }
 
+  int _runtimeMajorForServer(BifrostServer server) {
+    final String serverType = server.type.toLowerCase();
+    final _MinecraftVersionParts versionParts = _minecraftVersionParts(
+      server.version,
+    );
+    if (serverType == 'paper' &&
+        versionParts.featureVersion == 26 &&
+        versionParts.minorVersion < 1) {
+      return 21;
+    }
+    if (serverType == 'paper' && versionParts.featureVersion < 26) {
+      return 21;
+    }
+    return _runtimeMajorForFeatureVersion(versionParts.featureVersion);
+  }
+
   int _runtimeMajorForVersion(String version) {
+    return _runtimeMajorForFeatureVersion(_minecraftFeatureVersion(version));
+  }
+
+  int _minecraftFeatureVersion(String version) {
+    return _minecraftVersionParts(version).featureVersion;
+  }
+
+  _MinecraftVersionParts _minecraftVersionParts(String version) {
     final List<int> parts = RegExp(r'\d+')
         .allMatches(version)
         .map((RegExpMatch match) => int.tryParse(match.group(0) ?? '') ?? 0)
         .where((int value) => value > 0)
         .toList();
     if (parts.isEmpty) {
-      return 21;
+      return const _MinecraftVersionParts(featureVersion: 20, minorVersion: 0);
     }
 
-    final int minecraftFeatureVersion = parts.first == 1 && parts.length > 1
-        ? parts[1]
-        : parts.first;
+    if (parts.first == 1 && parts.length > 1) {
+      return _MinecraftVersionParts(
+        featureVersion: parts[1],
+        minorVersion: parts.length > 2 ? parts[2] : 0,
+      );
+    }
+
+    return _MinecraftVersionParts(
+      featureVersion: parts.first,
+      minorVersion: parts.length > 1 ? parts[1] : 0,
+    );
+  }
+
+  int _runtimeMajorForFeatureVersion(int minecraftFeatureVersion) {
     if (minecraftFeatureVersion >= 26) {
       return 25;
     }
@@ -585,7 +687,13 @@ class ServerManagerService extends ChangeNotifier {
         if (!status.isBusy) {
           if (!syncStarted && status.state == 'stopped') {
             syncStarted = true;
-            await _syncRuntimeMirrorAfterStop(server);
+            // Skip SAF sync if the exit code is negative (signal kill).
+            // After a JVM crash the binder system is degraded and SAF
+            // operations flood logcat with FAILED BINDER TRANSACTION.
+            final int? exitCode = status.lastExitCode;
+            if (exitCode == null || exitCode >= 0) {
+              await _syncRuntimeMirrorAfterStop(server);
+            }
           }
           timer.cancel();
         }
@@ -605,12 +713,24 @@ class ServerManagerService extends ChangeNotifier {
         server.path,
         runtimeMessage: 'Server stopped and files were synced.',
       );
-    } on ServerStorageException catch (error) {
+    } on ServerStorageException {
+      // SAF permission stale or sync failed — non-fatal.
+      // Server data is safe in the runtime mirror.
       _updateServer(
         server.path,
-        status: 'Error',
-        consoleLabel: 'Sync Failed',
-        runtimeMessage: error.message,
+        status: 'Stopped',
+        consoleLabel: 'Stopped',
+        runtimeMessage: 'Server stopped. File sync to external storage was skipped '
+            '(storage permission may need to be re-selected in Settings).',
+        isBusy: false,
+      );
+    } catch (_) {
+      // After a JVM crash, Android's binder IPC can be degraded.
+      _updateServer(
+        server.path,
+        status: 'Stopped',
+        consoleLabel: 'Stopped',
+        runtimeMessage: 'Server stopped. File sync was skipped due to a runtime error.',
         isBusy: false,
       );
     }
@@ -702,4 +822,76 @@ class ServerManagerService extends ChangeNotifier {
     _serverStatusPollTimer?.cancel();
     super.dispose();
   }
+}
+
+class _ResolvedServerArtifact {
+  const _ResolvedServerArtifact({
+    required this.projectName,
+    required this.minecraftVersion,
+    required this.fileName,
+    required this.downloadUrl,
+    this.sha1,
+    this.buildId,
+    this.channel,
+  });
+
+  final String projectName;
+  final String minecraftVersion;
+  final String fileName;
+  final Uri downloadUrl;
+  final String? sha1;
+  final int? buildId;
+  final String? channel;
+}
+
+class _ResolvedServerDownload {
+  const _ResolvedServerDownload({
+    required this.artifact,
+    required this.destinationFile,
+  });
+
+  factory _ResolvedServerDownload.fromOfficial(
+    OfficialServerDownloadResult result,
+  ) {
+    return _ResolvedServerDownload(
+      artifact: _ResolvedServerArtifact(
+        projectName: result.artifact.projectName,
+        minecraftVersion: result.artifact.minecraftVersion,
+        fileName: result.artifact.fileName,
+        downloadUrl: result.artifact.downloadUrl,
+        sha1: result.artifact.sha1,
+        buildId: result.artifact.buildId,
+        channel: result.artifact.channel,
+      ),
+      destinationFile: result.destinationFile,
+    );
+  }
+
+  factory _ResolvedServerDownload.fromPaper(PaperJarDownloadResult result) {
+    return _ResolvedServerDownload(
+      artifact: _ResolvedServerArtifact(
+        projectName: 'paper',
+        minecraftVersion: result.artifact.minecraftVersion,
+        fileName: result.artifact.fileName,
+        downloadUrl: result.artifact.downloadUrl,
+        sha1: result.artifact.sha256,
+        buildId: result.artifact.buildId,
+        channel: result.artifact.channel,
+      ),
+      destinationFile: result.destinationFile,
+    );
+  }
+
+  final _ResolvedServerArtifact artifact;
+  final File destinationFile;
+}
+
+class _MinecraftVersionParts {
+  const _MinecraftVersionParts({
+    required this.featureVersion,
+    required this.minorVersion,
+  });
+
+  final int featureVersion;
+  final int minorVersion;
 }

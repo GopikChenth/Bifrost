@@ -132,6 +132,12 @@ class MainActivity : FlutterActivity() {
                 ) { arguments ->
                     storageAccessManager.prepareServerLaunch(arguments)
                 }
+                "isEulaAccepted" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.isEulaAccepted(arguments)
+                }
                 "copyServerToDirectory" -> runStorageOperation(
                     call = call,
                     result = result,
@@ -144,6 +150,12 @@ class MainActivity : FlutterActivity() {
                 ) { arguments ->
                     storageAccessManager.syncDirectoryToServer(arguments)
                     null
+                }
+                "copyDirectoryToTree" -> runStorageOperation(
+                    call = call,
+                    result = result,
+                ) { arguments ->
+                    storageAccessManager.copyDirectoryToTree(arguments)
                 }
                 else -> result.notImplemented()
             }

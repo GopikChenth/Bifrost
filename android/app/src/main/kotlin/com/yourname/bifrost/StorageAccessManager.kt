@@ -243,6 +243,30 @@ class StorageAccessManager(
         }
     }
 
+    fun copyDirectoryToTree(arguments: Map<String, Any?>): Map<String, Any?> {
+        val treeUri = requireString(arguments, "treeUri")
+        val sourcePath = requireString(arguments, "sourcePath")
+        val targetName = requireString(arguments, "targetName")
+        val sourceDir = File(sourcePath)
+        if (!sourceDir.isDirectory) {
+            throw IOException("Source folder is missing at $sourcePath.")
+        }
+
+        val root = requireTree(treeUri)
+        root.findFile(targetName)?.delete()
+        val targetDir = requireNotNull(root.createDirectory(targetName)) {
+            "Unable to create backup directory."
+        }
+        sourceDir.listFiles().orEmpty().forEach { child ->
+            copyFileTreeToDocument(child, targetDir)
+        }
+        val rawRoot = resolveTreePath(Uri.parse(treeUri))
+        return mapOf(
+            "uri" to targetDir.uri.toString(),
+            "path" to (rawRoot?.let { File(it, targetName).absolutePath } ?: targetDir.uri.toString()),
+        )
+    }
+
     fun writeDownloadMetadata(arguments: Map<String, Any?>) {
         val metadataUri = requireString(arguments, "metadataUri")
         val metadataFile = requireDocument(metadataUri)
@@ -309,6 +333,32 @@ class StorageAccessManager(
             "metadataUri" to metadataFile.uri.toString(),
             "eulaUri" to eulaFile.uri.toString(),
         )
+    }
+
+    fun isEulaAccepted(arguments: Map<String, Any?>): Boolean {
+        val serverUri = requireString(arguments, "serverUri")
+        /* If the SAF URI permission has been revoked (common after reboot
+         * or Android permission cleanup), fall back to reading eula.txt
+         * from the server's local filesystem path if available. */
+        val uri = Uri.parse(serverUri)
+        if (!hasValidUriPermission(uri)) {
+            return false
+        }
+
+        val serverDir = try {
+            requireDirectoryDocument(serverUri)
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        val eulaFile = serverDir.findFile("eula.txt") ?: return false
+        if (!eulaFile.isFile) {
+            return false
+        }
+
+        return readText(eulaFile.uri)
+            .lineSequence()
+            .map { it.trim() }
+            .any { it.equals("eula=true", ignoreCase = true) }
     }
 
     fun copyServerToDirectory(arguments: Map<String, Any?>): Map<String, Any?> {
@@ -411,6 +461,18 @@ class StorageAccessManager(
 
     private fun requireDirectoryDocument(documentUri: String): DocumentFile {
         val uri = Uri.parse(documentUri)
+
+        /* Validate that we still hold a persistable URI permission.
+         * SAF permissions can be revoked after app restart, reboot,
+         * or Android's permission cleanup. Failing early with a clear
+         * message prevents cascading FAILED BINDER TRANSACTION errors. */
+        if (!hasValidUriPermission(uri)) {
+            throw IllegalArgumentException(
+                "Requested storage directory is no longer available. " +
+                    "Re-select your server folder from Settings.",
+            )
+        }
+
         val directory = try {
             val authority = uri.authority ?: return requireDocument(documentUri)
             val treeId = DocumentsContract.getTreeDocumentId(uri)
@@ -597,5 +659,28 @@ class StorageAccessManager(
             return null
         }
         return File(base, child).absolutePath
+    }
+
+    /**
+     * Checks whether the app still holds a valid persistable URI
+     * permission for the given content:// URI. SAF permissions
+     * can become stale after device reboot, app updates, or
+     * Android's background permission cleanup.
+     */
+    private fun hasValidUriPermission(uri: Uri): Boolean {
+        if (uri.scheme != "content") {
+            return true
+        }
+
+        val rootUri = try {
+            val treeDocId = DocumentsContract.getTreeDocumentId(uri)
+            DocumentsContract.buildTreeDocumentUri(uri.authority, treeDocId)
+        } catch (_: IllegalArgumentException) {
+            uri
+        }
+
+        return contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == rootUri && permission.isReadPermission
+        }
     }
 }

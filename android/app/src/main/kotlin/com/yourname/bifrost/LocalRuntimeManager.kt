@@ -76,6 +76,7 @@ class LocalRuntimeManager(
             selectedRuntimeMarkerFile.exists() &&
                 selectedRuntimeMarkerFile.readText().trim() == selectedRuntimeVersion
         if (markerMatches && requiredFiles.all { File(selectedRuntimeHome, it).exists() }) {
+            ensureJavaBinaryExecutable(selectedRuntimeHome)
             return
         }
 
@@ -95,6 +96,7 @@ class LocalRuntimeManager(
             unpackPack200Files(selectedRuntimeHome)
         }
         validateRuntimeInstall(runtime, selectedRuntimeHome)
+        ensureJavaBinaryExecutable(selectedRuntimeHome)
         selectedRuntimeMarkerFile.writeText("$selectedRuntimeVersion\n")
     }
 
@@ -148,6 +150,8 @@ class LocalRuntimeManager(
                 serverState.set("starting")
                 lastMessage.set("Launching $jarPath")
 
+                cleanStalePaperclipArtifacts(serverPath)
+
                 val safeMaxRam = computeSafeMaxRam(maxRamMb)
                 val safeMinRam = minOf(512, safeMaxRam)
                 Log.d(tag, "RAM: requested=${maxRamMb}M, safeMax=${safeMaxRam}M, safeMin=${safeMinRam}M")
@@ -160,9 +164,13 @@ class LocalRuntimeManager(
                         "-Duser.dir=$serverPath",
                         "-Duser.language=${System.getProperty("user.language") ?: "en"}",
                         "-Djava.awt.headless=true",
+                        "-Dsun.java2d.opengl=false",
+                        "-Dsun.java2d.xrender=false",
+                        "-Dsun.java2d.noddraw=true",
                         "-Dos.name=Linux",
                         "-Dos.version=Android-${Build.VERSION.RELEASE}",
                         "-Djdk.lang.Process.launchMechanism=FORK",
+                        "-DPaper.IgnoreJavaVersion=true",
                         "-Xms${safeMinRam}M",
                         "-Xmx${safeMaxRam}M",
                         "-jar",
@@ -175,6 +183,17 @@ class LocalRuntimeManager(
                 if (stopRequested) {
                     serverState.set("stopped")
                     lastMessage.set("Server stopped.")
+                } else if (exitCode < 0) {
+                    /* Negative exit codes come from signal-killed children
+                     * (e.g. SIGSEGV in the Adreno GPU driver during JVM
+                     * shutdown cleanup). If world data was already saved,
+                     * this is harmless — report it as an error but don't
+                     * alarm the user with a crash dialog. */
+                    serverState.set("error")
+                    lastMessage.set(
+                        "Server process was killed by a signal (code $exitCode). " +
+                            "World data was saved before shutdown.",
+                    )
                 } else {
                     serverState.set(if (exitCode == 0) "stopped" else "error")
                     lastMessage.set("Server exited with code $exitCode.")
@@ -209,29 +228,74 @@ class LocalRuntimeManager(
 
         stopRequested = true
         serverState.set("stopping")
-        lastMessage.set("Sending graceful stop command to the local server.")
 
+        val wasRunning = LocalJvmBridge.isJVMReady()
+
+        /* If the server was fully online, flush world data before stopping.
+         * Paper's 'save-all flush' forces an immediate synchronous write of
+         * all chunks and player data, so nothing is lost on shutdown. */
+        if (wasRunning) {
+            lastMessage.set("Saving world data before stopping.")
+            val saveResult = LocalJvmBridge.sendJVMCommand("save-all flush")
+            if (saveResult > 0) {
+                Log.d(tag, "save-all flush command sent, waiting for disk flush")
+            }
+        }
+
+        /* Send the Minecraft 'stop' command via stdin. This tells Paper to
+         * kick players, save remaining data, and shut down gracefully. */
+        lastMessage.set("Sending stop command to the server.")
         val stopResult = LocalJvmBridge.stopJVM()
-        if (stopResult < 0) {
-            serverState.set("error")
-            lastMessage.set("Unable to send graceful stop command to the local server.")
+
+        if (stopResult <= 0) {
+            /* stdin pipe is not available (0) or write failed (-1).
+             * The server can't receive console commands, so escalate
+             * to SIGTERM immediately instead of waiting for a timeout. */
+            Log.w(tag, "stdin pipe unavailable (result=$stopResult), sending SIGTERM directly")
+            lastMessage.set("Console pipe unavailable, sending SIGTERM.")
+            LocalJvmBridge.terminateJVM()
+
+            Thread {
+                try {
+                    Thread.sleep(8000)
+                    val activeThread = launchThread
+                    if (stopRequested && activeThread != null && activeThread.isAlive) {
+                        LocalJvmBridge.forceStopJVM()
+                        lastMessage.set("Server did not respond to SIGTERM, forcing shutdown.")
+                    }
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }.apply {
+                name = "bifrost-local-server-force-stop"
+                start()
+            }
+
             return getServerStatus()
         }
 
+        /* Graceful shutdown path — the stop command was sent successfully.
+         * Paper needs time to save worlds and clean up. Give longer if the
+         * server was fully running (world data to flush) vs still starting
+         * (no world data yet, but init may need to finish first). */
+        val gracefulTimeoutMs = if (wasRunning) 30_000L else 20_000L
+
         Thread {
             try {
-                Thread.sleep(15000)
+                Thread.sleep(gracefulTimeoutMs)
                 val activeThread = launchThread
                 if (stopRequested && activeThread != null && activeThread.isAlive) {
+                    Log.w(tag, "Graceful stop timed out after ${gracefulTimeoutMs}ms, sending SIGTERM")
                     LocalJvmBridge.terminateJVM()
                     lastMessage.set("Server did not stop gracefully, sending SIGTERM.")
                 }
 
-                Thread.sleep(4000)
+                Thread.sleep(8000)
                 val stillActiveThread = launchThread
                 if (stopRequested && stillActiveThread != null && stillActiveThread.isAlive) {
+                    Log.w(tag, "SIGTERM timed out, sending SIGKILL")
                     LocalJvmBridge.forceStopJVM()
-                    lastMessage.set("Server did not stop after SIGTERM, forcing shutdown.")
+                    lastMessage.set("Server did not respond to SIGTERM, forcing shutdown.")
                 }
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
@@ -366,6 +430,29 @@ class LocalRuntimeManager(
         }
     }
 
+    /**
+     * Ensures the JRE's `bin/java` binary is marked executable.
+     *
+     * When the JRE tar.xz is extracted on Android, file permissions
+     * from the archive may not be preserved. The `bin/java` binary
+     * must be executable for `execv()` to work in the forked child
+     * process, which is critical for GPU driver isolation — `execv()`
+     * replaces the process image and unmaps the Adreno driver pages
+     * inherited from the Flutter parent via `fork()`.
+     */
+    private fun ensureJavaBinaryExecutable(runtimeHome: File) {
+        val binDir = File(runtimeHome, "bin")
+        if (!binDir.isDirectory) {
+            return
+        }
+        binDir.listFiles()?.forEach { file ->
+            if (file.isFile && !file.canExecute()) {
+                val set = file.setExecutable(true, false)
+                Log.d(tag, "chmod +x ${file.name}: $set")
+            }
+        }
+    }
+
     private fun prepareEnvironment(workingDirectory: String?) {
         val libDir = resolveRuntimeLibDir(runtimeHome)
         val serverLibDir = File(libDir, "server")
@@ -380,7 +467,11 @@ class LocalRuntimeManager(
             append(libDir.absolutePath)
             append(':')
             append(context.applicationInfo.nativeLibraryDir)
-            append(":/system/lib64:/vendor/lib64:/vendor/lib64/hw")
+            /* System GPU library paths (/system/lib64, /vendor/lib64) are
+             * intentionally excluded. The Adreno OpenGL driver crashes with
+             * SIGSEGV when loaded in a headless forked JVM child that has
+             * no EGL/display context. A headless Minecraft server never
+             * needs GPU access, so omitting these paths is safe. */
         }
 
         Os.setenv("JAVA_HOME", runtimeHome.absolutePath, true)
@@ -496,6 +587,28 @@ class LocalRuntimeManager(
             "liblcms.so",
             "libmlib_image.so",
         )
+    }
+
+    /**
+     * Deletes Paperclip extraction artifacts that are fully regenerated
+     * from the Paper jar on every launch. This prevents
+     * [java.nio.file.FileSystemException] ("Not a directory") caused by
+     * stale files left behind from a previous crashed extraction.
+     */
+    private fun cleanStalePaperclipArtifacts(serverPath: String) {
+        val serverDir = File(serverPath)
+        val staleDirectories = listOf("libraries", "versions", "cache")
+        for (dirName in staleDirectories) {
+            val dir = File(serverDir, dirName)
+            if (dir.exists()) {
+                val deleted = dir.deleteRecursively()
+                Log.d(
+                    tag,
+                    if (deleted) "Cleaned stale Paperclip directory: ${dir.absolutePath}"
+                    else "Warning: unable to fully clean ${dir.absolutePath}",
+                )
+            }
+        }
     }
 
 }

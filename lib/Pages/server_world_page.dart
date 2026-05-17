@@ -123,6 +123,34 @@ class _WorldPageState extends State<WorldPage> {
     }
   }
 
+  Future<void> _backupToGoogleDrive(BifrostServer server) async {
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Google Drive backup'),
+          content: const Text(
+            'Choose a folder inside Google Drive in the next picker. '
+            'Bifrost will copy the current world folder there as a backup.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _runAction(() => widget.serverManager.syncWorldBackup(server));
+              },
+              child: const Text('Choose Drive folder'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _openWorldOptions(BifrostServer server) {
     Navigator.of(context).push(
       MaterialPageRoute<WorldOptionsPage>(
@@ -242,6 +270,13 @@ class _WorldPageState extends State<WorldPage> {
                 icon: Icons.download_rounded,
                 enabled: !_isBusy,
                 onTap: () => _runAction(() => widget.serverManager.exportWorldBackup(server)),
+              ),
+              _WorldActionTile(
+                title: 'Google Drive',
+                subtitle: 'Backup world to Drive',
+                icon: Icons.cloud_upload_rounded,
+                enabled: !_isBusy,
+                onTap: () => _backupToGoogleDrive(server),
               ),
               _WorldActionTile(
                 title: 'Upload',

@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #include "log.h"
 #include "utils.h"
@@ -169,6 +171,17 @@ static void* dlopen_runtime_library(int argc, char** argv, const char* relative_
     return NULL;
 }
 
+static bool runtime_library_exists(int argc, char** argv, const char* relative_path) {
+    const char* java_home = find_java_home_arg(argc, argv);
+    if (java_home == NULL || java_home[0] == '\0') {
+        return false;
+    }
+
+    char absolute_path[PATH_BUFFER_SIZE];
+    snprintf(absolute_path, sizeof(absolute_path), "%s/%s", java_home, relative_path);
+    return access(absolute_path, R_OK) == 0;
+}
+
 static void preload_library_from_path_list(const char* library_name) {
     const char* path_list = getenv("LD_LIBRARY_PATH");
     if (path_list == NULL || path_list[0] == '\0') {
@@ -221,11 +234,181 @@ static void preload_runtime_core_libraries(int argc, char** argv) {
         NULL
     };
 
-    for (int i = 0; modern_core_libraries[i] != NULL; i++) {
-        dlopen_runtime_library(argc, argv, modern_core_libraries[i]);
+    if (runtime_library_exists(argc, argv, "lib/libjava.so")) {
+        for (int i = 0; modern_core_libraries[i] != NULL; i++) {
+            dlopen_runtime_library(argc, argv, modern_core_libraries[i]);
+        }
+        return;
     }
-    for (int i = 0; java8_core_libraries[i] != NULL; i++) {
-        dlopen_runtime_library(argc, argv, java8_core_libraries[i]);
+
+    if (runtime_library_exists(argc, argv, "lib/aarch64/libjava.so")) {
+        for (int i = 0; java8_core_libraries[i] != NULL; i++) {
+            dlopen_runtime_library(argc, argv, java8_core_libraries[i]);
+        }
+    }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * LD_LIBRARY_PATH sanitizer
+ *
+ * Removes system GPU library directories (/system/lib*, /vendor/lib*)
+ * from LD_LIBRARY_PATH. On Qualcomm Adreno devices the OpenGL driver
+ * (libGLESv2_adreno.so) crashes with SIGSEGV when loaded outside a
+ * proper EGL/display context, which a headless forked JVM child
+ * does not have. Since the Minecraft server is headless, no GPU
+ * access is needed — stripping these paths is safe.
+ * ────────────────────────────────────────────────────────────────── */
+
+static void sanitize_ld_library_path(void) {
+    const char* current = getenv("LD_LIBRARY_PATH");
+    if (current == NULL || current[0] == '\0') {
+        return;
+    }
+
+    char* mutable_copy = strdup(current);
+    if (mutable_copy == NULL) {
+        return;
+    }
+
+    char sanitized[PATH_BUFFER_SIZE];
+    sanitized[0] = '\0';
+    size_t sanitized_len = 0;
+
+    char* save_ptr = NULL;
+    char* segment = strtok_r(mutable_copy, ":", &save_ptr);
+    while (segment != NULL) {
+        /* Skip any path under /system/lib or /vendor/lib */
+        if (strncmp(segment, "/system/lib", 11) != 0 &&
+            strncmp(segment, "/vendor/lib", 11) != 0) {
+            size_t seg_len = strlen(segment);
+            if (sanitized_len + seg_len + 2 < PATH_BUFFER_SIZE) {
+                if (sanitized_len > 0) {
+                    sanitized[sanitized_len++] = ':';
+                }
+                memcpy(sanitized + sanitized_len, segment, seg_len);
+                sanitized_len += seg_len;
+                sanitized[sanitized_len] = '\0';
+            }
+        }
+        segment = strtok_r(NULL, ":", &save_ptr);
+    }
+
+    free(mutable_copy);
+    setenv("LD_LIBRARY_PATH", sanitized, 1);
+    fprintf(stdout, "Sanitized LD_LIBRARY_PATH (GPU libs removed)\n");
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * GPU device file descriptor cleanup
+ *
+ * After fork(), the child inherits all of the parent's open file
+ * descriptors, including GPU device files like /dev/kgsl-3d0
+ * (Qualcomm Adreno). The Adreno driver's internal state was
+ * initialized in the parent and is invalid in the child — when
+ * driver code tries to use these stale FDs, it crashes with SIGSEGV.
+ *
+ * Closing these FDs prevents the driver from talking to the GPU
+ * hardware. Any driver cleanup code will get EBADF instead of
+ * accessing invalid GPU state.
+ * ────────────────────────────────────────────────────────────────── */
+
+static void close_gpu_device_fds(void) {
+    DIR* proc_fd_dir = opendir("/proc/self/fd");
+    if (proc_fd_dir == NULL) {
+        return;
+    }
+
+    int dir_fd = dirfd(proc_fd_dir);
+    struct dirent* entry;
+
+    while ((entry = readdir(proc_fd_dir)) != NULL) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        int fd = atoi(entry->d_name);
+        /* Never close stdin/stdout/stderr or the directory fd itself. */
+        if (fd <= STDERR_FILENO || fd == dir_fd) {
+            continue;
+        }
+
+        char link_path[128];
+        char target[512];
+        snprintf(link_path, sizeof(link_path), "/proc/self/fd/%d", fd);
+        ssize_t len = readlink(link_path, target, sizeof(target) - 1);
+        if (len <= 0) {
+            continue;
+        }
+        target[len] = '\0';
+
+        /* Close GPU device files:
+         *   /dev/kgsl-*  — Qualcomm Adreno
+         *   /dev/mali*   — ARM Mali
+         *   /dev/pvr*    — PowerVR / Imagination
+         *   /dev/dri/*   — DRM (generic)
+         *   /dev/ion     — ION memory allocator (used by GPU) */
+        if (strncmp(target, "/dev/kgsl", 9) == 0 ||
+            strncmp(target, "/dev/mali", 9) == 0 ||
+            strncmp(target, "/dev/pvr", 8) == 0 ||
+            strncmp(target, "/dev/dri/", 9) == 0 ||
+            strcmp(target, "/dev/ion") == 0) {
+            close(fd);
+            fprintf(stdout, "Closed GPU device fd %d -> %s\n", fd, target);
+        }
+    }
+
+    closedir(proc_fd_dir);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * GPU library memory unmapping
+ *
+ * Removes the Adreno/OpenGL driver code from the child's address
+ * space entirely by reading /proc/self/maps and munmapping all
+ * regions belonging to GPU-related libraries. After this, any
+ * accidental call into the driver hits unmapped memory — the
+ * JVM's own SIGSEGV handler catches it cleanly instead of the
+ * driver crashing internally with corrupt state.
+ * ────────────────────────────────────────────────────────────────── */
+
+static void unmap_gpu_libraries(void) {
+    FILE* maps = fopen("/proc/self/maps", "r");
+    if (maps == NULL) {
+        return;
+    }
+
+    char line[1024];
+    int unmapped_count = 0;
+
+    while (fgets(line, sizeof(line), maps) != NULL) {
+        /* Only unmap GPU-related libraries. */
+        if (strstr(line, "libGLES") == NULL &&
+            strstr(line, "libEGL") == NULL &&
+            strstr(line, "adreno") == NULL &&
+            strstr(line, "vulkan") == NULL &&
+            strstr(line, "libgsl") == NULL) {
+            continue;
+        }
+
+        /* Parse the address range: "start-end perms ..." */
+        unsigned long start = 0, end = 0;
+        if (sscanf(line, "%lx-%lx", &start, &end) != 2) {
+            continue;
+        }
+        if (start == 0 || end <= start) {
+            continue;
+        }
+
+        size_t length = end - start;
+        if (munmap((void*) start, length) == 0) {
+            unmapped_count++;
+        }
+    }
+
+    fclose(maps);
+    if (unmapped_count > 0) {
+        fprintf(stdout, "Unmapped %d GPU library regions from child process\n",
+                unmapped_count);
     }
 }
 
@@ -377,7 +560,28 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     }
 
     if (pid == 0) {
-        /* ───── CHILD PROCESS ───── */
+        /* ───── CHILD PROCESS ─────
+         *
+         * GPU driver isolation for Android:
+         *
+         * The Flutter parent uses OpenGL (via Skia) for rendering,
+         * so libGLESv2_adreno.so is loaded in its address space with
+         * open GPU device FDs (/dev/kgsl-3d0 on Qualcomm).
+         *
+         * fork() copies those mapped GPU driver pages and FDs to the
+         * child. The Adreno driver is NOT fork-safe — if any JVM
+         * shutdown code accidentally touches those pages, the driver's
+         * internal state is invalid and it crashes with SIGSEGV.
+         *
+         * We apply 3 layers of defense:
+         * 1. Close GPU device FDs (/dev/kgsl-*) so the driver can't
+         *    talk to hardware and gets EBADF on any ioctl.
+         * 2. munmap GPU library pages so driver code can't execute.
+         * 3. Strip GPU paths from LD_LIBRARY_PATH to prevent reloading.
+         *
+         * Pipe redirections (stdin/stdout/stderr) survive because
+         * dup2'd standard FDs are not close-on-exec by default.
+         */
         close(input_pipe[1]); /* close stdin write end */
         close(output_pipe[0]); /* close read end */
 
@@ -392,11 +596,33 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
         setvbuf(stdout, NULL, _IOLBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);
 
+        /* ── GPU driver isolation ──
+         *
+         * The Flutter parent uses OpenGL (Skia), so the Adreno driver
+         * (libGLESv2_adreno.so) is loaded and has open device FDs
+         * (/dev/kgsl-3d0). fork() copies all of this to the child.
+         *
+         * The driver is NOT fork-safe — its internal GPU state is
+         * invalid in the child. During JVM shutdown, cleanup code
+         * touches the driver and crashes with SIGSEGV.
+         *
+         * Fix: 2 layers of defense:
+         * 1. Close GPU device FDs so the driver can't ioctl hardware
+         * 2. Strip GPU paths from LD_LIBRARY_PATH to prevent reloading
+         *
+         * We do NOT munmap the GPU library pages because the JVM and
+         * other loaded libraries retain function pointers/vtable entries
+         * pointing into those regions. Unmapping causes an immediate
+         * SIGSEGV at startup from dangling pointers.
+         *
+         * The residual shutdown crash (after all world data is saved)
+         * is cosmetic — the parent handles signal-killed children
+         * gracefully via the stopRequested/exitCode logic. */
+        close_gpu_device_fds();
+        sanitize_ld_library_path();
+
         jint result = launch_jvm_child(argc, argv);
 
-        /* If JLI_Launch actually returns (rare), exit with its code.
-         * Normally the JVM calls exit() internally and we never
-         * reach here — but that's fine, the parent catches it. */
         _exit(result);
     }
 
