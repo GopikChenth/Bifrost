@@ -4,7 +4,7 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
-import 'package:bifrost/Pages/world_page.dart';
+import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:flutter/material.dart';
 
@@ -322,11 +322,7 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
 
   List<String> _knownPlayersFrom(Map<String, List<String>> lists) {
     final Set<String> knownPlayers = <String>{};
-    for (final String key in <String>[
-      'whitelist',
-      'ops',
-      'bannedPlayers',
-    ]) {
+    for (final String key in <String>['whitelist', 'ops', 'bannedPlayers']) {
       for (final String value in lists[key] ?? const <String>[]) {
         if (value.trim().isNotEmpty) {
           knownPlayers.add(value.trim());
@@ -336,10 +332,13 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
     final String consoleOutput = widget.serverManager.consoleOutputFor(
       widget.serverPath,
     );
-    knownPlayers.addAll(widget.serverManager.knownPlayersFor(widget.serverPath));
+    knownPlayers.addAll(
+      widget.serverManager.knownPlayersFor(widget.serverPath),
+    );
     knownPlayers.addAll(_playersFromConsole(consoleOutput));
-    return knownPlayers.toList()
-      ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return knownPlayers.toList()..sort(
+      (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
+    );
   }
 
   Iterable<String> _playersFromConsole(String consoleOutput) sync* {
@@ -920,7 +919,9 @@ class PlayerProfilePage extends StatelessWidget {
     final BifrostServer? server = serverManager.serverByPath(serverPath);
     if (server == null || !server.isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Start the server before sending commands.')),
+        const SnackBar(
+          content: Text('Start the server before sending commands.'),
+        ),
       );
       return;
     }
@@ -929,7 +930,9 @@ class PlayerProfilePage extends StatelessWidget {
       command: command,
     );
     if (context.mounted && message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -994,7 +997,9 @@ class PlayerProfilePage extends StatelessWidget {
                   itemBuilder: (BuildContext context, int index) {
                     return DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         border: Border.all(
                           color: Theme.of(context).colorScheme.outlineVariant,
                         ),
@@ -1130,7 +1135,8 @@ class _PlayerControlDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    final bool allDeleteSelected = deleteExperience &&
+    final bool allDeleteSelected =
+        deleteExperience &&
         deleteInventory &&
         deleteEnderChest &&
         deletePlayerData &&
@@ -1230,7 +1236,8 @@ class _PlayerControlDashboard extends StatelessWidget {
                       ChoiceChip(
                         label: Text(player),
                         selected:
-                            selectedPlayer?.toLowerCase() == player.toLowerCase(),
+                            selectedPlayer?.toLowerCase() ==
+                            player.toLowerCase(),
                         onSelected: isSending
                             ? null
                             : (_) {
@@ -1602,10 +1609,7 @@ class _SwitchRow extends StatelessWidget {
               ),
             ),
           ),
-          Switch(
-            value: value,
-            onChanged: enabled ? (_) => onPressed() : null,
-          ),
+          Switch(value: value, onChanged: enabled ? (_) => onPressed() : null),
         ],
       ),
     );
@@ -1700,9 +1704,7 @@ class _CheckPill extends StatelessWidget {
       label: Text(label),
       selected: value,
       avatar: Icon(
-        value
-            ? Icons.check_box_rounded
-            : Icons.check_box_outline_blank_rounded,
+        value ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
       ),
       selectedColor: colors.primaryContainer,
       onSelected: onChanged,
@@ -1891,10 +1893,7 @@ class _MessagePanel extends StatelessWidget {
         color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Text(
-        message,
-        style: TextStyle(color: colors.onSurfaceVariant),
-      ),
+      child: Text(message, style: TextStyle(color: colors.onSurfaceVariant)),
     );
   }
 }

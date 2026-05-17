@@ -5,7 +5,7 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
-import 'package:bifrost/Pages/world_page.dart';
+import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:flutter/material.dart';
 
@@ -70,9 +70,9 @@ class _TerminalPageState extends State<TerminalPage> {
     }
     if (message != null) {
       _commandController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

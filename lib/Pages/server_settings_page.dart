@@ -3,7 +3,7 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
-import 'package:bifrost/Pages/world_page.dart';
+import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:flutter/material.dart';
 
@@ -82,21 +82,22 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
         );
         _whitelist = _boolProperty(properties, 'white-list');
         _allowFlight = _boolProperty(properties, 'allow-flight');
-        _difficulty = _choiceProperty(
-          properties,
-          'difficulty',
-          <String>['peaceful', 'easy', 'normal', 'hard'],
-          fallback: 'easy',
-        );
-        _gamemode = _choiceProperty(
-          properties,
-          'gamemode',
-          <String>['survival', 'creative', 'adventure', 'spectator'],
-          fallback: 'survival',
-        );
+        _difficulty = _choiceProperty(properties, 'difficulty', <String>[
+          'peaceful',
+          'easy',
+          'normal',
+          'hard',
+        ], fallback: 'easy');
+        _gamemode = _choiceProperty(properties, 'gamemode', <String>[
+          'survival',
+          'creative',
+          'adventure',
+          'spectator',
+        ], fallback: 'survival');
         _slotsController.text = properties['max-players'] ?? '20';
         _resourcePackController.text = properties['resource-pack'] ?? '';
-        _spawnProtectionController.text = properties['spawn-protection'] ?? '16';
+        _spawnProtectionController.text =
+            properties['spawn-protection'] ?? '16';
         _isLoading = false;
         _errorMessage = null;
       });
@@ -160,9 +161,9 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
       _errorMessage = message;
     });
     if (message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -415,7 +416,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                       ),
                       _SettingsSwitch(
                         title: 'Force Gamemode',
-                        subtitle: 'Forces players into the configured gamemode.',
+                        subtitle:
+                            'Forces players into the configured gamemode.',
                         value: _forceGamemode,
                         onChanged: _isSaving
                             ? null
@@ -449,7 +451,8 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
                       ),
                       _SettingsSwitch(
                         title: 'Fly',
-                        subtitle: 'Allows flight if the client/mod supports it.',
+                        subtitle:
+                            'Allows flight if the client/mod supports it.',
                         value: _allowFlight,
                         onChanged: _isSaving
                             ? null
@@ -594,10 +597,7 @@ class _SettingsDropdown extends StatelessWidget {
         value: value,
         items: <DropdownMenuItem<String>>[
           for (final String item in values)
-            DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            ),
+            DropdownMenuItem<String>(value: item, child: Text(item)),
         ],
         onChanged: onChanged,
         decoration: InputDecoration(
