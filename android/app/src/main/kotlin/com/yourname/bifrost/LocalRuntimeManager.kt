@@ -2,7 +2,6 @@ package com.yourname.bifrost
 
 import android.app.ActivityManager
 import android.content.Context
-import android.content.res.AssetManager
 import android.os.Build
 import android.system.Os
 import android.util.Log
@@ -13,11 +12,10 @@ import java.util.concurrent.atomic.AtomicReference
 class LocalRuntimeManager(
     private val context: Context,
 ) {
-    private val bundledRuntimeVersion = "internal-21-2026-05-03"
     private val runtimeRoot: File = File(context.filesDir, "runtimes")
-    private val runtimeHome: File = File(runtimeRoot, "Internal-21")
-    private val runtimeMarkerFile: File = File(runtimeHome, "runtime.version")
     private val tag = "bifrost-local-runtime"
+    @Volatile
+    private var activeRuntimeMajor = 21
     @Volatile
     private var launchThread: Thread? = null
     @Volatile
@@ -31,55 +29,80 @@ class LocalRuntimeManager(
     private val serverState = AtomicReference("idle")
     private val lastMessage = AtomicReference<String?>(null)
 
+    private val runtimeHome: File
+        get() = BundledRuntimeCatalog.byJavaMajor(activeRuntimeMajor).installHome(runtimeRoot)
+
     fun getRuntimeStatus(): Map<String, Any> {
+        val runtime = BundledRuntimeCatalog.byJavaMajor(activeRuntimeMajor)
         val runtimeLibDir = resolveRuntimeLibDir(runtimeHome)
         return mapOf(
             "runtimeRoot" to runtimeRoot.absolutePath,
             "runtimeHome" to runtimeHome.absolutePath,
+            "runtimeMajor" to activeRuntimeMajor,
             "runtimeHomeExists" to runtimeHome.exists(),
             "releaseExists" to File(runtimeHome, "release").exists(),
             "libDir" to runtimeLibDir.absolutePath,
             "libDirExists" to runtimeLibDir.exists(),
-            "libjliExists" to File(runtimeLibDir, "libjli.so").exists(),
-            "libjvmExists" to File(runtimeLibDir, "server/libjvm.so").exists(),
-            "modulesExists" to File(runtimeLibDir, "modules").exists(),
+            "libjliExists" to File(runtimeHome, runtime.jliRelativePath).exists(),
+            "libjvmExists" to File(runtimeHome, runtime.jvmRelativePath).exists(),
+            "modulesExists" to File(runtimeHome, runtime.moduleOrClasspathMarker).exists(),
         )
     }
 
     @Throws(IOException::class)
     @Synchronized
-    fun prepareBundledRuntimeHome() {
+    fun prepareBundledRuntimeHome(runtimeMajor: Int = activeRuntimeMajor) {
+        val runtime = BundledRuntimeCatalog.byJavaMajor(runtimeMajor)
+        if (activeRuntimeMajor != runtime.javaMajor) {
+            activeRuntimeMajor = runtime.javaMajor
+            runtimeInitialized = false
+        }
+        val selectedRuntimeHome = runtime.installHome(runtimeRoot)
+        val selectedRuntimeMarkerFile = File(selectedRuntimeHome, "runtime.version")
+        val selectedRuntimeVersion = readRuntimeAssetVersion(runtime)
+
         if (!runtimeRoot.exists() && !runtimeRoot.mkdirs()) {
             throw IOException("Unable to create runtime root at ${runtimeRoot.absolutePath}")
         }
+        cleanupLegacyRuntimeHomes()
 
         val requiredFiles = listOf(
-            "lib/modules",
-            "lib/libjli.so",
-            "lib/server/libjvm.so",
+            runtime.moduleOrClasspathMarker,
+            runtime.jliRelativePath,
+            runtime.jvmRelativePath,
         )
 
         val markerMatches =
-            runtimeMarkerFile.exists() &&
-                runtimeMarkerFile.readText().trim() == bundledRuntimeVersion
-        if (markerMatches && requiredFiles.all { File(runtimeHome, it).exists() }) {
+            selectedRuntimeMarkerFile.exists() &&
+                selectedRuntimeMarkerFile.readText().trim() == selectedRuntimeVersion
+        if (markerMatches && requiredFiles.all { File(selectedRuntimeHome, it).exists() }) {
             return
         }
 
         runtimeInitialized = false
-        if (runtimeHome.exists() && !runtimeHome.deleteRecursively()) {
-            throw IOException("Unable to replace runtime home at ${runtimeHome.absolutePath}")
+        if (selectedRuntimeHome.exists() && !selectedRuntimeHome.deleteRecursively()) {
+            throw IOException("Unable to replace runtime home at ${selectedRuntimeHome.absolutePath}")
         }
 
-        copyAssetDirectory(context.assets, "jre-home", runtimeHome)
-        runtimeMarkerFile.writeText("$bundledRuntimeVersion\n")
+        selectedRuntimeHome.mkdirs()
+        context.assets.open("${runtime.assetPath}/universal.tar.xz").use { input ->
+            TarXzExtractor.extract(input, selectedRuntimeHome)
+        }
+        context.assets.open("${runtime.assetPath}/${runtime.architectureArchiveName()}").use { input ->
+            TarXzExtractor.extract(input, selectedRuntimeHome)
+        }
+        if (runtime.javaMajor == 8) {
+            unpackPack200Files(selectedRuntimeHome)
+        }
+        validateRuntimeInstall(runtime, selectedRuntimeHome)
+        selectedRuntimeMarkerFile.writeText("$selectedRuntimeVersion\n")
     }
 
-    fun runJavaVersion(workingDirectory: String?): Int {
+    fun runJavaVersion(workingDirectory: String?, runtimeMajor: Int = activeRuntimeMajor): Int {
+        prepareBundledRuntimeHome(runtimeMajor)
         val launchDirectory =
             workingDirectory?.takeIf { it.isNotBlank() } ?: runtimeHome.absolutePath
         prepareEnvironment(workingDirectory)
-        initializeJvmRuntime()
         return LocalJvmBridge.launchJVM(
             arrayOf(
                 "java",
@@ -102,6 +125,7 @@ class LocalRuntimeManager(
         serverPath: String,
         jarPath: String,
         maxRamMb: Int,
+        runtimeMajor: Int = 21,
     ): Map<String, Any?> {
         val existingThread = launchThread
         if (existingThread != null && existingThread.isAlive) {
@@ -118,9 +142,8 @@ class LocalRuntimeManager(
 
         val thread = Thread {
             try {
-                prepareBundledRuntimeHome()
+                prepareBundledRuntimeHome(runtimeMajor)
                 prepareEnvironment(serverPath)
-                initializeJvmRuntime()
 
                 serverState.set("starting")
                 lastMessage.set("Launching $jarPath")
@@ -276,12 +299,84 @@ class LocalRuntimeManager(
         }
     }
 
+    private fun readRuntimeAssetVersion(runtime: BundledRuntime): String {
+        return context.assets.open("${runtime.assetPath}/version").use { input ->
+            input.bufferedReader().readText().trim()
+        }
+    }
+
+    private fun unpackPack200Files(runtimeHome: File) {
+        val unpacker = File(context.applicationInfo.nativeLibraryDir, "libunpack200.so")
+        if (!unpacker.exists()) {
+            throw IOException("Java 8 pack200 unpacker is missing at ${unpacker.absolutePath}")
+        }
+
+        val packedFiles = runtimeHome.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".pack") }
+            .toList()
+
+        for (packFile in packedFiles) {
+            val outputFile = File(packFile.parentFile, packFile.name.removeSuffix(".pack"))
+            try {
+                val process = ProcessBuilder(
+                    "./${unpacker.name}",
+                    "-r",
+                    packFile.absolutePath,
+                    outputFile.absolutePath,
+                )
+                    .directory(File(context.applicationInfo.nativeLibraryDir))
+                    .redirectErrorStream(true)
+                    .start()
+                val output = process.inputStream.bufferedReader().readText().trim()
+                val exitCode = process.waitFor()
+                if (exitCode != 0) {
+                    throw IOException(
+                        "unpack200 failed for ${packFile.absolutePath} with exit=$exitCode $output",
+                    )
+                }
+            } catch (error: Throwable) {
+                if (error is InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                throw IOException("Unable to unpack ${packFile.absolutePath}", error)
+            }
+        }
+    }
+
+    private fun validateRuntimeInstall(runtime: BundledRuntime, runtimeHome: File) {
+        val missingFiles = listOf(
+            runtime.moduleOrClasspathMarker,
+            runtime.jliRelativePath,
+            runtime.jvmRelativePath,
+        ).filterNot { File(runtimeHome, it).exists() }
+
+        if (missingFiles.isNotEmpty()) {
+            throw IOException(
+                "Java ${runtime.javaMajor} runtime install is incomplete. Missing: ${missingFiles.joinToString()}",
+            )
+        }
+    }
+
+    private fun cleanupLegacyRuntimeHomes() {
+        listOf("Internal-8", "Internal-17", "Internal-21", "Internal-25").forEach { legacyName ->
+            val legacyHome = File(runtimeRoot, legacyName)
+            if (legacyHome.exists() && !legacyHome.deleteRecursively()) {
+                Log.w(tag, "Unable to delete legacy runtime home ${legacyHome.absolutePath}")
+            }
+        }
+    }
+
     private fun prepareEnvironment(workingDirectory: String?) {
         val libDir = resolveRuntimeLibDir(runtimeHome)
         val serverLibDir = File(libDir, "server")
+        val jliLibDir = File(libDir, "jli")
         val ldLibraryPath = buildString {
             append(serverLibDir.absolutePath)
             append(':')
+            if (jliLibDir.exists()) {
+                append(jliLibDir.absolutePath)
+                append(':')
+            }
             append(libDir.absolutePath)
             append(':')
             append(context.applicationInfo.nativeLibraryDir)
@@ -355,8 +450,7 @@ class LocalRuntimeManager(
     }
 
     private fun resolveRuntimeLibDir(home: File): File {
-        val aarch64Dir = File(home, "lib/aarch64")
-        return if (aarch64Dir.exists()) aarch64Dir else File(home, "lib")
+        return File(home, BundledRuntimeCatalog.byJavaMajor(activeRuntimeMajor).libDirectory)
     }
 
     private fun collectRuntimeLibraries(libDir: File): List<String> {
@@ -404,30 +498,4 @@ class LocalRuntimeManager(
         )
     }
 
-    @Throws(IOException::class)
-    private fun copyAssetDirectory(
-        assetManager: AssetManager,
-        assetPath: String,
-        destination: File,
-    ) {
-        val children = assetManager.list(assetPath).orEmpty()
-        if (children.isEmpty()) {
-            destination.parentFile?.mkdirs()
-            assetManager.open(assetPath).use { input ->
-                destination.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            return
-        }
-
-        if (!destination.exists() && !destination.mkdirs()) {
-            throw IOException("Unable to create ${destination.absolutePath}")
-        }
-
-        for (child in children) {
-            val childAssetPath = if (assetPath.isEmpty()) child else "$assetPath/$child"
-            copyAssetDirectory(assetManager, childAssetPath, File(destination, child))
-        }
-    }
 }

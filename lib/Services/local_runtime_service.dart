@@ -28,10 +28,15 @@ class LocalRuntimeService {
     }
   }
 
-  Future<LocalRuntimeStatus> prepareBundledRuntimeHome() async {
+  Future<LocalRuntimeStatus> prepareBundledRuntimeHome({
+    int runtimeMajor = 21,
+  }) async {
     try {
-      final Map<Object?, Object?>? result = await _channel
-          .invokeMapMethod<Object?, Object?>('prepareBundledRuntimeHome');
+      final Map<Object?, Object?>? result =
+          await _channel.invokeMapMethod<Object?, Object?>(
+        'prepareBundledRuntimeHome',
+        <String, Object?>{'runtimeMajor': runtimeMajor},
+      );
       return LocalRuntimeStatus.fromMap(
         result ?? <Object?, Object?>{},
       );
@@ -44,11 +49,13 @@ class LocalRuntimeService {
 
   Future<LocalRuntimeTestResult> runJavaVersion({
     String? workingDirectory,
+    int runtimeMajor = 21,
   }) async {
     try {
       final Map<Object?, Object?>? result = await _channel
           .invokeMapMethod<Object?, Object?>('runJavaVersion', <String, Object?>{
             'workingDirectory': workingDirectory,
+            'runtimeMajor': runtimeMajor,
           });
       return LocalRuntimeTestResult.fromMap(
         result ?? <Object?, Object?>{},
@@ -78,6 +85,7 @@ class LocalRuntimeService {
     required String serverPath,
     required String jarPath,
     required int maxRamMb,
+    int runtimeMajor = 21,
   }) async {
     try {
       final Map<Object?, Object?>? result = await _channel
@@ -85,6 +93,7 @@ class LocalRuntimeService {
             'serverPath': serverPath,
             'jarPath': jarPath,
             'maxRamMb': maxRamMb,
+            'runtimeMajor': runtimeMajor,
           });
       return LocalServerStatus.fromMap(
         result ?? <Object?, Object?>{},

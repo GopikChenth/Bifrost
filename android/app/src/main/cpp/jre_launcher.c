@@ -25,6 +25,7 @@
 
 #define FULL_VERSION "21.0.0-internal"
 #define DOT_VERSION "21"
+#define PATH_BUFFER_SIZE 4096
 
 typedef jint JLI_Launch_func(
     int argc,
@@ -137,6 +138,97 @@ static void start_log_reader(int read_fd) {
     pthread_detach(thread);
 }
 
+static const char* find_java_home_arg(int argc, char** argv) {
+    const char* prefix = "-Djava.home=";
+    size_t prefix_len = strlen(prefix);
+    for (int i = 0; i < argc; i++) {
+        if (argv[i] != NULL && strncmp(argv[i], prefix, prefix_len) == 0) {
+            return argv[i] + prefix_len;
+        }
+    }
+    return NULL;
+}
+
+static void* dlopen_runtime_library(int argc, char** argv, const char* relative_path) {
+    const char* java_home = find_java_home_arg(argc, argv);
+    if (java_home != NULL && java_home[0] != '\0') {
+        char absolute_path[PATH_BUFFER_SIZE];
+        snprintf(absolute_path, sizeof(absolute_path), "%s/%s", java_home, relative_path);
+        void* handle = dlopen(absolute_path, RTLD_LAZY | RTLD_GLOBAL);
+        if (handle != NULL) {
+            return handle;
+        }
+        fprintf(stderr, "dlopen %s failed: %s\n", absolute_path, dlerror());
+    }
+
+    void* handle = dlopen(relative_path, RTLD_LAZY | RTLD_GLOBAL);
+    if (handle != NULL) {
+        return handle;
+    }
+    fprintf(stderr, "dlopen %s failed: %s\n", relative_path, dlerror());
+    return NULL;
+}
+
+static void preload_library_from_path_list(const char* library_name) {
+    const char* path_list = getenv("LD_LIBRARY_PATH");
+    if (path_list == NULL || path_list[0] == '\0') {
+        return;
+    }
+
+    char* mutable_paths = strdup(path_list);
+    if (mutable_paths == NULL) {
+        return;
+    }
+
+    char* save_ptr = NULL;
+    char* directory = strtok_r(mutable_paths, ":", &save_ptr);
+    while (directory != NULL) {
+        char absolute_path[PATH_BUFFER_SIZE];
+        snprintf(absolute_path, sizeof(absolute_path), "%s/%s", directory, library_name);
+        if (access(absolute_path, R_OK) == 0) {
+            void* handle = dlopen(absolute_path, RTLD_NOW | RTLD_GLOBAL);
+            if (handle != NULL) {
+                fprintf(stdout, "Preloaded %s\n", absolute_path);
+                free(mutable_paths);
+                return;
+            }
+            fprintf(stderr, "Preload %s failed: %s\n", absolute_path, dlerror());
+        }
+        directory = strtok_r(NULL, ":", &save_ptr);
+    }
+
+    free(mutable_paths);
+}
+
+static void preload_runtime_core_libraries(int argc, char** argv) {
+    const char* modern_core_libraries[] = {
+        "lib/server/libjvm.so",
+        "lib/libjava.so",
+        "lib/libverify.so",
+        "lib/libnet.so",
+        "lib/libnio.so",
+        "lib/libzip.so",
+        "lib/libjimage.so",
+        NULL
+    };
+    const char* java8_core_libraries[] = {
+        "lib/aarch64/server/libjvm.so",
+        "lib/aarch64/libjava.so",
+        "lib/aarch64/libverify.so",
+        "lib/aarch64/libnet.so",
+        "lib/aarch64/libnio.so",
+        "lib/aarch64/libzip.so",
+        NULL
+    };
+
+    for (int i = 0; modern_core_libraries[i] != NULL; i++) {
+        dlopen_runtime_library(argc, argv, modern_core_libraries[i]);
+    }
+    for (int i = 0; java8_core_libraries[i] != NULL; i++) {
+        dlopen_runtime_library(argc, argv, java8_core_libraries[i]);
+    }
+}
+
 /* ──────────────────────────────────────────────────────────────────
  * JVM launch (runs inside the forked child process)
  * ────────────────────────────────────────────────────────────────── */
@@ -166,11 +258,18 @@ static jint launch_jvm_child(int argc, char** argv) {
         sigaction(sigid, &clean_sa, NULL);
     }
 
-    void* libjli = dlopen("libjli.so", RTLD_LAZY | RTLD_GLOBAL);
+    preload_library_from_path_list("libc++_shared.so");
+
+    void* libjli = dlopen_runtime_library(argc, argv, "lib/libjli.so");
     if (libjli == NULL) {
-        fprintf(stderr, "JLI lib = NULL: %s\n", dlerror());
+        libjli = dlopen_runtime_library(argc, argv, "lib/aarch64/jli/libjli.so");
+    }
+    if (libjli == NULL) {
+        fprintf(stderr, "JLI lib = NULL\n");
         return -1;
     }
+
+    preload_runtime_core_libraries(argc, argv);
 
     JLI_Launch_func* jliLaunch = (JLI_Launch_func*) dlsym(libjli, "JLI_Launch");
     if (jliLaunch == NULL) {

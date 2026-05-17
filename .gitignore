@@ -61,11 +61,17 @@ app.*.map.json
 /server_data/
 /minecraft_servers/
 /world_backups/
-/tunnel/
-/playit/
-/ngrok/
-/playit-linux-aarch64
 
 # Local Android runtime investigation assets
 /Amethyst-Android-3_openjdk/
 /Amethyst-Android-3_openjdk.zip
+/FoldCraftLauncher-main/
+/FoldCraftLauncher-main.zip
+/JRE-21/
+/JRE-21.zip
+
+# Local toolchains and docs (machine-specific)
+/JRE-21/
+/jr-21.zip
+/FILE_USAGE.md
+/.vscode/

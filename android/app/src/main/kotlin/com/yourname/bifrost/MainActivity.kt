@@ -33,11 +33,6 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "bifrost/local_runtime",
         ).setMethodCallHandler(::handleLocalRuntimeMethodCall)
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "bifrost/native_package",
-        ).setMethodCallHandler(::handleNativePackageMethodCall)
     }
 
     override fun onActivityResult(
@@ -49,16 +44,6 @@ class MainActivity : FlutterActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
-    }
-
-    private fun handleNativePackageMethodCall(
-        call: MethodCall,
-        result: MethodChannel.Result,
-    ) {
-        when (call.method) {
-            "getNativeLibraryDir" -> result.success(applicationInfo.nativeLibraryDir)
-            else -> result.notImplemented()
-        }
     }
 
     private fun handleFileManagerMethodCall(
@@ -233,7 +218,8 @@ class MainActivity : FlutterActivity() {
 
             "prepareBundledRuntimeHome" -> {
                 try {
-                    localRuntimeManager.prepareBundledRuntimeHome()
+                    val runtimeMajor = call.argument<Int>("runtimeMajor") ?: 21
+                    localRuntimeManager.prepareBundledRuntimeHome(runtimeMajor)
                     result.success(localRuntimeManager.getRuntimeStatus())
                 } catch (error: Exception) {
                     result.error(
@@ -247,7 +233,11 @@ class MainActivity : FlutterActivity() {
             "runJavaVersion" -> {
                 try {
                     val workingDirectory = call.argument<String>("workingDirectory")
-                    val exitCode = localRuntimeManager.runJavaVersion(workingDirectory)
+                    val runtimeMajor = call.argument<Int>("runtimeMajor") ?: 21
+                    val exitCode = localRuntimeManager.runJavaVersion(
+                        workingDirectory = workingDirectory,
+                        runtimeMajor = runtimeMajor,
+                    )
                     result.success(
                         mapOf(
                             "exitCode" to exitCode,
@@ -280,6 +270,7 @@ class MainActivity : FlutterActivity() {
                     val serverPath = call.argument<String>("serverPath")?.trim().orEmpty()
                     val jarPath = call.argument<String>("jarPath")?.trim().orEmpty()
                     val maxRamMb = call.argument<Int>("maxRamMb") ?: 2048
+                    val runtimeMajor = call.argument<Int>("runtimeMajor") ?: 21
 
                     if (serverPath.isEmpty() || jarPath.isEmpty()) {
                         result.error(
@@ -295,6 +286,7 @@ class MainActivity : FlutterActivity() {
                             serverPath = serverPath,
                             jarPath = jarPath,
                             maxRamMb = maxRamMb,
+                            runtimeMajor = runtimeMajor,
                         ),
                     )
                 } catch (error: Exception) {

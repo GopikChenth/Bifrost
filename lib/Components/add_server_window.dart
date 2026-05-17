@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:bifrost/Service/official_server_download_service.dart';
+import 'package:bifrost/Services/official_server_download_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 

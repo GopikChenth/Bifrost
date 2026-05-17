@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bifrost/Pages/homepage.dart';
+import 'package:bifrost/Pages/bifrost_dashboard.dart';
 
 void main() {
   runApp(const MyApp());
