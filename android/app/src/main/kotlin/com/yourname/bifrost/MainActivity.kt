@@ -35,17 +35,6 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler(::handleLocalRuntimeMethodCall)
     }
 
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?,
-    ) {
-        if (storageAccessManager.handleActivityResult(requestCode, resultCode, data)) {
-            return
-        }
-        super.onActivityResult(requestCode, resultCode, data)
-    }
-
     private fun handleFileManagerMethodCall(
         call: MethodCall,
         result: MethodChannel.Result,
@@ -86,128 +75,30 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun handleStorageAccessMethodCall(
         call: MethodCall,
         result: MethodChannel.Result,
     ) {
         try {
             when (call.method) {
-                "pickDirectory" -> storageAccessManager.pickDirectory(result)
-                "createServerStructure" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.createServerStructure(arguments)
+                "hasAllFilesAccess" -> {
+                    result.success(storageAccessManager.hasAllFilesAccess())
                 }
-                "loadStoredServers" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.loadStoredServers(arguments)
+                "requestAllFilesAccess" -> {
+                    storageAccessManager.requestAllFilesAccess()
+                    result.success(null)
                 }
-                "copyFileToDirectory" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.copyFileToDirectory(arguments)
-                }
-                "writeDownloadMetadata" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.writeDownloadMetadata(arguments)
-                    null
-                }
-                "deleteServerDirectory" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.deleteServerDirectory(arguments)
-                    null
-                }
-                "prepareServerLaunch" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.prepareServerLaunch(arguments)
-                }
-                "isEulaAccepted" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.isEulaAccepted(arguments)
-                }
-                "copyServerToDirectory" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.copyServerToDirectory(arguments)
-                }
-                "syncDirectoryToServer" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.syncDirectoryToServer(arguments)
-                    null
-                }
-                "copyDirectoryToTree" -> runStorageOperation(
-                    call = call,
-                    result = result,
-                ) { arguments ->
-                    storageAccessManager.copyDirectoryToTree(arguments)
+                "getDefaultExternalBasePath" -> {
+                    result.success(storageAccessManager.getDefaultExternalBasePath())
                 }
                 else -> result.notImplemented()
             }
         } catch (error: Exception) {
-            val message = buildString {
-                append(call.method)
-                append(" failed: ")
-                append(error::class.java.simpleName)
-                val details = error.message ?: error.localizedMessage
-                if (!details.isNullOrBlank()) {
-                    append(": ")
-                    append(details)
-                }
-            }
             result.error(
                 "STORAGE_ACCESS_FAILED",
-                message,
+                error.localizedMessage ?: "Storage access operation failed.",
                 null,
             )
-        }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun runStorageOperation(
-        call: MethodCall,
-        result: MethodChannel.Result,
-        operation: (Map<String, Any?>) -> Any?,
-    ) {
-        Thread {
-            try {
-                val operationResult = operation(call.arguments as? Map<String, Any?> ?: emptyMap())
-                runOnUiThread {
-                    result.success(operationResult)
-                }
-            } catch (error: Exception) {
-                val message = buildString {
-                    append(call.method)
-                    append(" failed: ")
-                    append(error::class.java.simpleName)
-                    val details = error.message ?: error.localizedMessage
-                    if (!details.isNullOrBlank()) {
-                        append(": ")
-                        append(details)
-                    }
-                }
-                runOnUiThread {
-                    result.error("STORAGE_ACCESS_FAILED", message, null)
-                }
-            }
-        }.apply {
-            name = "bifrost-storage-${call.method}"
-            start()
         }
     }
 

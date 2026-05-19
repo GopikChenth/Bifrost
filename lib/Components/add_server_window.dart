@@ -86,7 +86,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
       );
       setState(() {
         _totalRamMb = safeTotal;
-        _allocatedRamMb = math.min(2048, _totalRamMb).toDouble();
+        _allocatedRamMb = _snapToStep(math.min(2048, _totalRamMb));
         _loadingRam = false;
         _isRamFallbackUsed = invalidRam;
       });
@@ -100,8 +100,18 @@ class _AddServerWindowState extends State<AddServerWindow> {
     }
   }
 
+  /// Snaps a value to the nearest 512 MB (0.5 GB) step.
+  double _snapToStep(double mb) {
+    return (mb / _stepMb).round() * _stepMb;
+  }
+
+  static const double _stepMb = 512;
+
   String _formatMbAsGb(double mb) {
     final double gb = mb / 1024;
+    if (gb == gb.roundToDouble()) {
+      return '${gb.toInt()} GB';
+    }
     return '${gb.toStringAsFixed(1)} GB';
   }
 
@@ -226,11 +236,11 @@ class _AddServerWindowState extends State<AddServerWindow> {
 
   @override
   Widget build(BuildContext context) {
-    final double sliderMin = math.min(512, _totalRamMb);
-    final double sliderMax = _totalRamMb;
-    final int divisions = sliderMax > sliderMin
-        ? ((sliderMax - sliderMin) / 256).floor().clamp(1, 256)
-        : 1;
+    final double sliderMin = _stepMb;
+    final double sliderMax =
+        ((_totalRamMb / _stepMb).ceil() * _stepMb).clamp(_stepMb, double.infinity);
+    final int divisions =
+        ((sliderMax - sliderMin) / _stepMb).round().clamp(1, 256);
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -257,7 +267,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                   }
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _selectedType,
                 decoration: InputDecoration(
@@ -279,7 +289,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                   }
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _selectedVersion,
                 decoration: const InputDecoration(
@@ -306,7 +316,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                       },
               ),
               if (_loadingVersions) ...<Widget>[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: SizedBox(
@@ -317,7 +327,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                 ),
               ],
               if (_versionStatusText != null) ...<Widget>[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -347,7 +357,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                 ),
               ],
               if (_selectedType == null) ...<Widget>[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -356,40 +366,51 @@ class _AddServerWindowState extends State<AddServerWindow> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      _loadingRam
-                          ? 'Detecting device RAM...'
-                          : 'Device RAM: ${_formatMbAsGb(_totalRamMb)}',
-                    ),
-                  ),
-                  if (_isRamFallbackUsed && !_loadingRam)
-                    Container(
-                      width: 10,
-                      height: 10,
-                      margin: const EdgeInsets.only(left: 8),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
+              const SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _loadingRam
+                      ? 'Detecting device RAM...'
+                      : 'Device RAM: ${_formatMbAsGb(_totalRamMb)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
-              if (_isRamFallbackUsed && !_loadingRam)
-                const Align(
+              if (_isRamFallbackUsed && !_loadingRam) ...<Widget>[
+                const SizedBox(height: 4),
+                Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Using fallback RAM value',
-                    style: TextStyle(color: Colors.red),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Using fallback RAM value',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Allocated RAM: ${_formatMbAsGb(_allocatedRamMb)}'),
+                child: Text(
+                  'Allocated: ${_formatMbAsGb(_allocatedRamMb)}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               Slider(
                 min: sliderMin,
@@ -408,7 +429,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '${_allocatedRamMb.round()} MB / ${_totalRamMb.round()} MB',
+                  '${_formatMbAsGb(sliderMin)} \u2013 ${_formatMbAsGb(sliderMax)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Server</title>
+<style>
+:root { --bg: oklch(98% 0.004 240); --surface:#fff; --fg:oklch(20% 0.02 240); --muted:oklch(48% 0.018 240); --border:oklch(90% 0.006 240); --accent:oklch(56% 0.12 170); --accent2:oklch(66% 0.1 220);}*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:"SF Pro Text","Segoe UI",sans-serif;color:var(--fg)}
+.app{padding:52px 18px 80px}.nav{display:flex;justify-content:space-between;align-items:center}.badge{padding:8px 14px;border-radius:999px;background:#d8f5ea;color:#0f6f59;font-weight:700}
+.hero{margin-top:14px;background:linear-gradient(120deg,color-mix(in oklab,var(--accent) 30%,white),color-mix(in oklab,var(--accent2) 35%,white));border:1px solid var(--border);border-radius:26px;padding:20px}
+.hero h1{margin:0;font-size:44px;letter-spacing:-.03em}.hero p{margin:6px 0 0;color:#134f5e;font-size:22px}
+.controls{margin-top:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}.controls button{min-height:50px;border:0;border-radius:14px;font-size:18px;font-weight:700}.start{background:var(--accent);color:#03342d}.stop{background:#ffe2e3;color:#822227}.restart{background:#f2f5f9;color:#364656}
+.block{margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px}.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.ip{font-size:30px;font-weight:780;letter-spacing:-.02em}.copy{min-height:48px;border:0;border-radius:12px;padding:0 16px;background:#e2f3f2;font-weight:700}
+.grid{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px}.tile{background:color-mix(in oklab,var(--accent2) 8%,white);border:1px solid var(--border);border-radius:14px;padding:12px}.tile b{display:block;margin-top:6px;font-size:25px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#173044;color:#dff7fb;padding:10px 14px;border-radius:12px;opacity:0;transition:.25s}
+.toast.show{opacity:1}
+</style></head>
+<body><div class="app"><div class="nav"><div style="font-size:34px;font-weight:780">ggh</div><span class="badge" id="stateBadge">Offline</span></div>
+<section class="hero"><h1>ggh</h1><p>Paper • 1.21</p></section>
+<div class="controls"><button id="start" class="start">Start</button><button id="stop" class="stop" disabled>Stop</button><button id="restart" class="restart">Restart</button></div>
+<section class="block"><div class="row"><div><div style="color:var(--muted)">Local Network Address</div><div class="ip" id="ip">100.104.51.112:25565</div></div><button id="copy" class="copy">Copy</button></div></section>
+<section class="grid"><article class="tile">Server Type<b>Paper</b></article><article class="tile">Version<b>1.21</b></article><article class="tile">Players Online<b>0 / 20</b></article><article class="tile">Allocated RAM<b>4.5 GB</b></article><article class="tile">RAM Usage<b id="ram">0.8 GB</b></article><article class="tile">Runtime State<b id="runtime">Stopped</b></article></section>
+</div><div class="toast" id="toast">Copied</div>
+<script>
+const start=document.getElementById('start');const stop=document.getElementById('stop');const badge=document.getElementById('stateBadge');const runtime=document.getElementById('runtime');
+start.onclick=()=>{start.disabled=true;stop.disabled=false;badge.textContent='Online';badge.style.background='#c8f1e8';runtime.textContent='Running';};
+stop.onclick=()=>{start.disabled=false;stop.disabled=true;badge.textContent='Offline';badge.style.background='#d8f5ea';runtime.textContent='Stopped';};
+document.getElementById('restart').onclick=()=>{runtime.textContent='Restarting...';setTimeout(()=>runtime.textContent='Running',900);};
+document.getElementById('copy').onclick=async()=>{try{await navigator.clipboard.writeText(document.getElementById('ip').textContent);}catch(e){}const t=document.getElementById('toast');t.textContent='Address copied';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1200);};
+</script></body></html>

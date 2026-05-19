@@ -237,7 +237,7 @@ class _ServerPageState extends State<ServerPage> {
         padding: const EdgeInsets.all(12),
         children: <Widget>[
           _HeroPanel(server: server),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -275,12 +275,12 @@ class _ServerPageState extends State<ServerPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _LocalNetworkPanel(
             isLoading: _isLoadingLocalIp,
             ipAddress: _localIpAddress,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           GridView.count(
             crossAxisCount: MediaQuery.sizeOf(context).width > 640 ? 4 : 2,
             mainAxisSpacing: 8,
@@ -327,14 +327,14 @@ class _ServerPageState extends State<ServerPage> {
               _DashboardPathMetric(path: server.path),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(
             'Runtime Message',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(10),
@@ -462,7 +462,7 @@ class _LocalNetworkPanel extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 SelectableText(
                   isLoading
                       ? 'Finding device IP...'
@@ -472,7 +472,7 @@ class _LocalNetworkPanel extends StatelessWidget {
                     color: address == null ? colors.onSurfaceVariant : null,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   'Friends on the same Wi-Fi can join with this address.',
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -542,7 +542,7 @@ class _DashboardMetric extends StatelessWidget {
                   color: colors.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 4),
               Text(
                 value,
                 maxLines: 2,
@@ -590,7 +590,7 @@ class _DashboardPathMetric extends StatelessWidget {
                   color: colors.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 4),
               Text(
                 path,
                 maxLines: 3,

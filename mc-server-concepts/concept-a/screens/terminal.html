@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Terminal</title>
+<style>
+:root{--bg:oklch(98% 0.004 240);--surface:#fff;--fg:oklch(20% 0.02 240);--muted:oklch(48% 0.018 240);--border:oklch(90% 0.006 240);--accent:oklch(56% 0.12 170)}*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:"SF Pro Text","Segoe UI",sans-serif;color:var(--fg)}
+.app{padding:52px 16px 94px}.head{display:flex;justify-content:space-between;align-items:center}.head h1{margin:0;font-size:34px}
+.chips{display:flex;gap:8px;margin:12px 0}.chip{padding:8px 12px;border-radius:999px;background:#e1f5ef;font-weight:700;color:#0b6a53}.chip.gray{background:#eceff4;color:#556174}
+.console{background:#07121b;color:#d7f4ff;border-radius:18px;border:1px solid #123041;min-height:620px;padding:16px;font-family:"JetBrains Mono","IBM Plex Mono",monospace;font-size:20px;line-height:1.42;overflow:auto;white-space:pre-wrap}
+.prompt{position:fixed;left:16px;right:16px;bottom:18px;display:flex;gap:8px;background:var(--surface);padding:8px;border-radius:14px;border:1px solid var(--border)}
+input{flex:1;min-height:48px;border:0;background:#eef3f7;border-radius:10px;padding:0 12px;font-size:18px}button{min-height:48px;min-width:62px;border:0;border-radius:10px;background:var(--accent);font-weight:700}
+</style></head>
+<body><div class="app"><div class="head"><h1>ggh Terminal</h1><span class="chip gray" id="state">Offline</span></div><div class="chips"><span class="chip gray">Offline</span><span class="chip">Ready</span></div>
+<div class="console" id="console">Bifrost terminal\nServer: ggh\nType: Paper\nVersion: 1.21\nStatus: Offline\n\nNo console output captured yet.\nWaiting for JVM console output.</div></div>
+<form class="prompt" id="terminalForm"><input id="cmd" placeholder="Type command: say server ready" /><button>Send</button></form>
+<script>
+const form=document.getElementById('terminalForm');const cmd=document.getElementById('cmd');const out=document.getElementById('console');
+form.addEventListener('submit',(e)=>{e.preventDefault();const value=cmd.value.trim();if(!value)return;out.textContent += `\n\n> ${value}\n[20:54:12 INFO]: command accepted`;cmd.value='';out.scrollTop=out.scrollHeight;});
+</script></body></html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concept A - Soft Terrain</title>
+  <style>
+    :root {
+      --bg: oklch(98% 0.004 240);
+      --surface: oklch(100% 0 0);
+      --fg: oklch(20% 0.02 240);
+      --muted: oklch(50% 0.018 240);
+      --border: oklch(90% 0.006 240);
+      --accent: oklch(56% 0.12 170);
+      --accent-2: oklch(64% 0.1 220);
+      --font-display: "Sohne", "Avenir Next", "Segoe UI", sans-serif;
+      --font-body: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: radial-gradient(circle at 10% 10%, color-mix(in oklab, var(--accent) 12%, white), var(--bg));
+      color: var(--fg);
+    }
+    header {
+      padding: 28px 36px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 20px;
+    }
+    h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(28px, 3vw, 44px);
+      letter-spacing: -0.02em;
+    }
+    p { margin: 6px 0 0; color: var(--muted); }
+    .back { color: inherit; text-decoration: none; border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; background: var(--surface); }
+    .grid {
+      padding: 20px 36px 40px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 22px;
+    }
+    .card {
+      background: color-mix(in oklab, var(--surface) 90%, var(--accent-2) 10%);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 16px;
+    }
+    .label { font-weight: 700; margin: 0 0 12px; }
+    iframe { width: 412px; height: 900px; border: 0; border-radius: 42px; display: block; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Concept A: Soft Terrain</h1>
+      <p>Friendly cards, pastel signal colors, and clean operational clarity.</p>
+    </div>
+    <a class="back" href="../index.html">All Concepts</a>
+  </header>
+  <main class="grid">
+    <article class="card"><p class="label">01 Servers</p><iframe src="../android-pixel.html?screen=concept-a/screens/servers.html" loading="lazy"></iframe></article>
+    <article class="card"><p class="label">02 Server Dashboard</p><iframe src="../android-pixel.html?screen=concept-a/screens/server.html" loading="lazy"></iframe></article>
+    <article class="card"><p class="label">03 Terminal</p><iframe src="../android-pixel.html?screen=concept-a/screens/terminal.html" loading="lazy"></iframe></article>
+    <article class="card"><p class="label">04 Players</p><iframe src="../android-pixel.html?screen=concept-a/screens/players.html" loading="lazy"></iframe></article>
+    <article class="card"><p class="label">05 World</p><iframe src="../android-pixel.html?screen=concept-a/screens/world.html" loading="lazy"></iframe></article>
+    <article class="card"><p class="label">06 Settings</p><iframe src="../android-pixel.html?screen=concept-a/screens/settings.html" loading="lazy"></iframe></article>
+  </main>
+</body>
+</html>

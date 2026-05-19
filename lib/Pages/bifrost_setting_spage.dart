@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:bifrost/Services/server_storage_service.dart';
-import 'package:bifrost/Utils/directory_picker_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -13,26 +10,42 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
   final SettingsRepository _settingsRepository = const SettingsRepository();
-  final DirectoryPickerService _directoryPickerService =
-      const DirectoryPickerService();
   final ServerStorageService _serverStorageService =
       const ServerStorageService();
   final TextEditingController _customPathController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isPickingDirectory = false;
   bool _useDefaultDirectory = true;
-  String _customDirectoryUri = '';
+  bool _hasAllFilesAccess = false;
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check permission when the user returns from system settings.
+    if (state == AppLifecycleState.resumed) {
+      _refreshPermissionStatus();
+    }
+  }
+
+  Future<void> _refreshPermissionStatus() async {
+    final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
+    if (mounted && hasAccess != _hasAllFilesAccess) {
+      setState(() {
+        _hasAllFilesAccess = hasAccess;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -41,26 +54,22 @@ class _SettingsPageState extends State<SettingsPage> {
           .loadServerDirectorySettings();
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
+      final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _useDefaultDirectory = settings.useDefaultDirectory;
         _customPathController.text = settings.customDirectoryPath;
-        _customDirectoryUri = settings.customDirectoryUri;
         _resolvedDirectoryPath = resolvedDirectoryPath;
+        _hasAllFilesAccess = hasAccess;
         _statusMessage = null;
       });
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _statusMessage =
-            'Settings could not be loaded. App-specific storage will be used.';
+            'Settings could not be loaded. Default storage will be used.';
       });
     } finally {
       if (mounted) {
@@ -71,36 +80,31 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _selectPath() async {
-    setState(() {
-      _isPickingDirectory = true;
-    });
-
+  Future<void> _requestAllFilesAccess() async {
     try {
-      final PickedDirectory? selectedDirectory = await _directoryPickerService
-          .pickDirectory();
-
-      if (!mounted || selectedDirectory == null) {
-        return;
-      }
-
-      _customPathController.text = selectedDirectory.path.trim();
-      _customDirectoryUri = selectedDirectory.uri.trim();
-      _useDefaultDirectory = false;
-      await _saveSettings();
+      await _serverStorageService.requestAllFilesAccess();
     } catch (_) {
       if (mounted) {
         setState(() {
-          _statusMessage = 'Unable to open the file manager on this device.';
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPickingDirectory = false;
+          _statusMessage = 'Unable to open storage permission settings.';
         });
       }
     }
+  }
+
+  Future<void> _pickDirectory() async {
+    final String? selectedPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select server storage directory',
+    );
+    if (selectedPath == null || selectedPath.trim().isEmpty) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _customPathController.text = selectedPath;
+      _resolvedDirectoryPath = selectedPath;
+      _statusMessage = null;
+    });
   }
 
   Future<void> _saveSettings() async {
@@ -111,23 +115,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final String customPath = _customPathController.text.trim();
     try {
-      if (!_useDefaultDirectory) {
-        await _validateDirectWritableCustomPath(customPath);
-      }
-
       final ServerDirectorySettings settings = ServerDirectorySettings(
         useDefaultDirectory: _useDefaultDirectory,
         customDirectoryPath: _useDefaultDirectory ? '' : customPath,
-        customDirectoryUri: _useDefaultDirectory ? '' : _customDirectoryUri,
       );
       await _settingsRepository.saveServerDirectorySettings(settings);
 
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _resolvedDirectoryPath = resolvedDirectoryPath;
@@ -136,16 +133,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Minecraft server directory set to $resolvedDirectoryPath',
-          ),
+          content: Text('Server directory set to $resolvedDirectoryPath'),
         ),
       );
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() {
         _statusMessage = error.toString().replaceFirst('Exception: ', '');
       });
@@ -158,40 +150,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _validateDirectWritableCustomPath(String customPath) async {
-    if (customPath.isEmpty) {
-      throw Exception('Enter or select a custom folder path first.');
-    }
-
-    if (_customDirectoryUri.trim().isNotEmpty) {
-      return;
-    }
-
-    if (!path.isAbsolute(customPath)) {
-      throw Exception(
-        'Custom server path must be an absolute filesystem path.',
-      );
-    }
-
-    final Directory baseDirectory = Directory(
-      path.join(customPath, 'minecraft'),
-    );
-    await baseDirectory.create(recursive: true);
-    final File probeFile = File(
-      path.join(baseDirectory.path, '.bifrost_probe'),
-    );
-    try {
-      await probeFile.writeAsString('ok', flush: true);
-      if (await probeFile.exists()) {
-        await probeFile.delete();
-      }
-    } on FileSystemException catch (error) {
-      throw Exception(
-        'Bifrost cannot write to ${baseDirectory.path}: ${error.message}',
-      );
-    }
-  }
-
   void _setDefaultDirectory(bool value) {
     setState(() {
       _useDefaultDirectory = value;
@@ -199,16 +157,14 @@ class _SettingsPageState extends State<SettingsPage> {
         _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
         _statusMessage = null;
       } else if (_customPathController.text.trim().isNotEmpty) {
-        _resolvedDirectoryPath = path.join(
-          _customPathController.text.trim(),
-          'minecraft',
-        );
+        _resolvedDirectoryPath = _customPathController.text.trim();
       }
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _customPathController.dispose();
     super.dispose();
   }
@@ -225,6 +181,69 @@ class _SettingsPageState extends State<SettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: <Widget>[
+                // ---- Storage permission card ----
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _hasAllFilesAccess
+                            ? colors.outlineVariant
+                            : colors.error.withOpacity(0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Icon(
+                              _hasAllFilesAccess
+                                  ? Icons.check_circle_rounded
+                                  : Icons.warning_amber_rounded,
+                              color: _hasAllFilesAccess
+                                  ? colors.primary
+                                  : colors.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Storage Access',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _hasAllFilesAccess
+                              ? 'All files access is granted. Bifrost can read and write server files directly.'
+                              : 'Bifrost needs "All files access" to manage server files. '
+                                  'Tap the button below to grant it in system settings.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                        if (!_hasAllFilesAccess) ...<Widget>[
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: _requestAllFilesAccess,
+                            icon: const Icon(Icons.settings_rounded),
+                            label: const Text('Grant All Files Access'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ---- Server directory card ----
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -240,14 +259,15 @@ class _SettingsPageState extends State<SettingsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          'Minecraft Server Directory',
+                          'Server Directory',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Live servers can use default app storage or a folder selected with Android folder access. If Android does not expose a direct filesystem path for Java, launch will ask you to choose another folder.',
+                          'All server files are stored in this folder. '
+                          'Each server gets its own subdirectory.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
@@ -255,7 +275,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 20),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Use default app storage'),
+                          title: const Text('Use default storage'),
                           subtitle: const Text(
                             ServerDirectorySettings.defaultDirectoryPath,
                           ),
@@ -264,31 +284,47 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         if (!_useDefaultDirectory) ...<Widget>[
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: _customPathController,
-                            decoration: const InputDecoration(
-                              labelText: 'Custom direct path',
-                              hintText: '/storage/emulated/0/Bifrost',
-                              border: OutlineInputBorder(),
-                            ),
-                            onChanged: (String value) {
-                              setState(() {
-                                _resolvedDirectoryPath = value.trim().isEmpty
-                                    ? ServerDirectorySettings
-                                          .defaultDirectoryPath
-                                    : path.join(value.trim(), 'minecraft');
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          FilledButton.tonalIcon(
-                            onPressed: _isPickingDirectory ? null : _selectPath,
-                            icon: const Icon(Icons.folder_open_rounded),
-                            label: Text(
-                              _isPickingDirectory
-                                  ? 'Opening file manager...'
-                                  : 'Select Path',
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: TextField(
+                                  controller: _customPathController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Custom directory path',
+                                    hintText: '/storage/emulated/0/MyServers',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (String value) {
+                                    setState(() {
+                                      _resolvedDirectoryPath =
+                                          value.trim().isEmpty
+                                              ? ServerDirectorySettings
+                                                    .defaultDirectoryPath
+                                              : value.trim();
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                height: 56,
+                                child: FilledButton.tonal(
+                                  onPressed: _pickDirectory,
+                                  style: FilledButton.styleFrom(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.folder_open_rounded,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                         const SizedBox(height: 16),

@@ -329,35 +329,14 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
         }
       }
     }
-    final String consoleOutput = widget.serverManager.consoleOutputFor(
-      widget.serverPath,
-    );
     knownPlayers.addAll(
       widget.serverManager.knownPlayersFor(widget.serverPath),
     );
-    knownPlayers.addAll(_playersFromConsole(consoleOutput));
     return knownPlayers.toList()..sort(
       (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
     );
   }
 
-  Iterable<String> _playersFromConsole(String consoleOutput) sync* {
-    final List<RegExp> patterns = <RegExp>[
-      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b'),
-      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b'),
-      RegExp(r'UUID of player ([A-Za-z0-9_]{3,16}) is\b'),
-    ];
-
-    for (final String line in consoleOutput.split('\n')) {
-      for (final RegExp pattern in patterns) {
-        final String? player = pattern.firstMatch(line)?.group(1);
-        if (player != null && player.trim().isNotEmpty) {
-          yield player.trim();
-          break;
-        }
-      }
-    }
-  }
 
   bool _containsValue(String key, String player) {
     return (_lists[key] ?? const <String>[]).any(

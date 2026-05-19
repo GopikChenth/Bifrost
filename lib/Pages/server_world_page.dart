@@ -128,10 +128,10 @@ class _WorldPageState extends State<WorldPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Google Drive backup'),
+          title: const Text('Backup world'),
           content: const Text(
-            'Choose a folder inside Google Drive in the next picker. '
-            'Bifrost will copy the current world folder there as a backup.',
+            'This will create a copy of the current world folder '
+            'inside the server\'s backups directory.',
           ),
           actions: <Widget>[
             TextButton(
@@ -141,9 +141,9 @@ class _WorldPageState extends State<WorldPage> {
             FilledButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                _runAction(() => widget.serverManager.syncWorldBackup(server));
+                _runAction(() => widget.serverManager.exportWorldBackup(server));
               },
-              child: const Text('Choose Drive folder'),
+              child: const Text('Create Backup'),
             ),
           ],
         );

@@ -32,6 +32,7 @@ class ServerManagerService extends ChangeNotifier {
   final Map<String, Set<String>> _knownPlayersByServerPath =
       <String, Set<String>>{};
   Timer? _serverStatusPollTimer;
+  DateTime _lastProgressNotify = DateTime(0);
 
   bool isLoadingServers = true;
   bool isCreatingServer = false;
@@ -161,7 +162,11 @@ class ServerManagerService extends ChangeNotifier {
             onProgress: (int receivedBytes, int? totalBytes) {
               downloadedBytes = receivedBytes;
               totalDownloadBytes = totalBytes;
-              notifyListeners();
+              final DateTime now = DateTime.now();
+              if (now.difference(_lastProgressNotify).inMilliseconds > 250) {
+                _lastProgressNotify = now;
+                notifyListeners();
+              }
             },
           );
       return _ResolvedServerDownload.fromPaper(result);
@@ -178,7 +183,11 @@ class ServerManagerService extends ChangeNotifier {
           onProgress: (int receivedBytes, int? totalBytes) {
             downloadedBytes = receivedBytes;
             totalDownloadBytes = totalBytes;
-            notifyListeners();
+            final DateTime now = DateTime.now();
+            if (now.difference(_lastProgressNotify).inMilliseconds > 250) {
+              _lastProgressNotify = now;
+              notifyListeners();
+            }
           },
         );
     return _ResolvedServerDownload.fromOfficial(result);
@@ -187,10 +196,7 @@ class ServerManagerService extends ChangeNotifier {
   Future<String?> deleteServer(BifrostServer server) async {
     try {
       if (server.path.trim().isNotEmpty) {
-        await _serverStorageService.deleteServerDirectory(
-          server.path,
-          serverUri: server.serverUri,
-        );
+        await _serverStorageService.deleteServerDirectory(server.path);
       }
       await loadStoredServers();
       return 'Deleted ${server.name}';
@@ -274,7 +280,6 @@ class ServerManagerService extends ChangeNotifier {
           .prepareServerLaunch(
             serverPath: server.path,
             memoryLabel: server.memoryLabel,
-            serverUri: server.serverUri,
           );
 
       final int runtimeMajor = _runtimeMajorForServer(server);
@@ -372,10 +377,6 @@ class ServerManagerService extends ChangeNotifier {
       if (server.isOnline || server.isBusy) {
         await _localRuntimeService.stopServer();
         await _waitForServerIdle();
-        await _serverStorageService.syncRuntimeMirrorToServer(
-          serverPath: server.path,
-          serverUri: server.serverUri,
-        );
       }
 
       final BifrostServer latestServer = serverByPath(server.path) ?? server;
@@ -464,22 +465,7 @@ class ServerManagerService extends ChangeNotifier {
     }
   }
 
-  Future<String?> syncWorldBackup(BifrostServer server) async {
-    try {
-      final Map<String, Object?>? directory = await _serverStorageService
-          .pickBackupDirectory();
-      final String? treeUri = directory?['uri'] as String?;
-      if (treeUri == null || treeUri.trim().isEmpty) {
-        return 'Backup sync cancelled.';
-      }
-      final String destination = await _serverStorageService
-          .syncWorldBackupToTree(serverPath: server.path, treeUri: treeUri);
-      return 'World backup synced to $destination';
-    } on ServerStorageException catch (error) {
-      _updateServer(server.path, runtimeMessage: error.message);
-      return error.message;
-    }
-  }
+
 
   Future<String?> importWorldFromDirectory({
     required BifrostServer server,
@@ -522,25 +508,17 @@ class ServerManagerService extends ChangeNotifier {
 
   Future<bool> isEulaAccepted(BifrostServer server) async {
     try {
-      return await _serverStorageService.isEulaAccepted(
-        server.path,
-        serverUri: server.serverUri,
-      );
+      return await _serverStorageService.isEulaAccepted(server.path);
     } on ServerStorageException {
       return false;
     } catch (_) {
-      // SAF permission revoked, binder failure, or other transient error.
-      // Treat as "not accepted" so the EULA dialog is shown instead of crashing.
       return false;
     }
   }
 
   Future<String?> acceptEula(BifrostServer server) async {
     try {
-      await _serverStorageService.acceptEula(
-        server.path,
-        serverUri: server.serverUri,
-      );
+      await _serverStorageService.acceptEula(server.path);
       return null;
     } on ServerStorageException catch (error) {
       _updateServer(server.path, runtimeMessage: error.message);
@@ -629,8 +607,10 @@ class ServerManagerService extends ChangeNotifier {
     return _minecraftVersionParts(version).featureVersion;
   }
 
+  static final RegExp _digitPattern = RegExp(r'\d+');
+
   _MinecraftVersionParts _minecraftVersionParts(String version) {
-    final List<int> parts = RegExp(r'\d+')
+    final List<int> parts = _digitPattern
         .allMatches(version)
         .map((RegExpMatch match) => int.tryParse(match.group(0) ?? '') ?? 0)
         .where((int value) => value > 0)
@@ -667,7 +647,6 @@ class ServerManagerService extends ChangeNotifier {
 
   void _startServerStatusPolling({required BifrostServer server}) {
     _serverStatusPollTimer?.cancel();
-    var syncStarted = false;
     _serverStatusPollTimer = Timer.periodic(const Duration(seconds: 2), (
       Timer timer,
     ) async {
@@ -685,55 +664,12 @@ class ServerManagerService extends ChangeNotifier {
           _applyServerStatus(serverPath: targetServerPath, status: status);
         }
         if (!status.isBusy) {
-          if (!syncStarted && status.state == 'stopped') {
-            syncStarted = true;
-            // Skip SAF sync if the exit code is negative (signal kill).
-            // After a JVM crash the binder system is degraded and SAF
-            // operations flood logcat with FAILED BINDER TRANSACTION.
-            final int? exitCode = status.lastExitCode;
-            if (exitCode == null || exitCode >= 0) {
-              await _syncRuntimeMirrorAfterStop(server);
-            }
-          }
           timer.cancel();
         }
       } catch (_) {
         timer.cancel();
       }
     });
-  }
-
-  Future<void> _syncRuntimeMirrorAfterStop(BifrostServer server) async {
-    try {
-      await _serverStorageService.syncRuntimeMirrorToServer(
-        serverPath: server.path,
-        serverUri: server.serverUri,
-      );
-      _updateServer(
-        server.path,
-        runtimeMessage: 'Server stopped and files were synced.',
-      );
-    } on ServerStorageException {
-      // SAF permission stale or sync failed — non-fatal.
-      // Server data is safe in the runtime mirror.
-      _updateServer(
-        server.path,
-        status: 'Stopped',
-        consoleLabel: 'Stopped',
-        runtimeMessage: 'Server stopped. File sync to external storage was skipped '
-            '(storage permission may need to be re-selected in Settings).',
-        isBusy: false,
-      );
-    } catch (_) {
-      // After a JVM crash, Android's binder IPC can be degraded.
-      _updateServer(
-        server.path,
-        status: 'Stopped',
-        consoleLabel: 'Stopped',
-        runtimeMessage: 'Server stopped. File sync was skipped due to a runtime error.',
-        isBusy: false,
-      );
-    }
   }
 
   void _applyServerStatus({
@@ -767,24 +703,37 @@ class ServerManagerService extends ChangeNotifier {
       isBusy: status.isBusy,
     );
     if (status.consoleOutput.trim().isNotEmpty) {
-      _consoleOutputByServerPath[serverPath] = status.consoleOutput;
+      _consoleOutputByServerPath[serverPath] = _capConsoleOutput(
+        status.consoleOutput,
+      );
       _rememberPlayersFromConsole(serverPath, status.consoleOutput);
     }
   }
+
+  static const int _maxConsoleLines = 500;
+
+  String _capConsoleOutput(String consoleOutput) {
+    final List<String> lines = consoleOutput.split('\n');
+    if (lines.length <= _maxConsoleLines) {
+      return consoleOutput;
+    }
+    return lines.sublist(lines.length - _maxConsoleLines).join('\n');
+  }
+
+  static final List<RegExp> _playerPatterns = <RegExp>[
+    RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b'),
+    RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b'),
+    RegExp(r'UUID of player ([A-Za-z0-9_]{3,16}) is\b'),
+  ];
 
   void _rememberPlayersFromConsole(String serverPath, String consoleOutput) {
     final Set<String> players = _knownPlayersByServerPath.putIfAbsent(
       serverPath,
       () => <String>{},
     );
-    final List<RegExp> patterns = <RegExp>[
-      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b'),
-      RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b'),
-      RegExp(r'UUID of player ([A-Za-z0-9_]{3,16}) is\b'),
-    ];
 
     for (final String line in consoleOutput.split('\n')) {
-      for (final RegExp pattern in patterns) {
+      for (final RegExp pattern in _playerPatterns) {
         final String? player = pattern.firstMatch(line)?.group(1);
         if (player != null && player.trim().isNotEmpty) {
           players.add(player.trim());
