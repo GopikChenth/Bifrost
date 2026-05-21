@@ -32,6 +32,7 @@ class _ServerPageState extends State<ServerPage>
   String? _localIpAddress;
   bool _isLoadingLocalIp = true;
   late final AnimationController _entranceController;
+  int? _pressedButtonIndex;
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
@@ -293,6 +294,12 @@ class _ServerPageState extends State<ServerPage>
                     pressedForegroundColor: colors.onPrimaryContainer,
                     expanded: true,
                     isActive: server.isBusy && !server.isOnline,
+                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+                    onPressStateChanged: (bool isPressed) {
+                      setState(() {
+                        _pressedButtonIndex = isPressed ? 0 : null;
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -311,6 +318,12 @@ class _ServerPageState extends State<ServerPage>
                     pressedForegroundColor: colors.onError,
                     expanded: true,
                     isActive: server.isOnline,
+                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+                    onPressStateChanged: (bool isPressed) {
+                      setState(() {
+                        _pressedButtonIndex = isPressed ? 1 : null;
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -329,6 +342,12 @@ class _ServerPageState extends State<ServerPage>
                     pressedForegroundColor: colors.onSecondary,
                     expanded: true,
                     isActive: false,
+                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+                    onPressStateChanged: (bool isPressed) {
+                      setState(() {
+                        _pressedButtonIndex = isPressed ? 2 : null;
+                      });
+                    },
                   ),
                 ),
               ],

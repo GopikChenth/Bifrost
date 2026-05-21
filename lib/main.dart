@@ -25,10 +25,9 @@ class BifrostApp extends StatelessWidget {
         colorScheme: colorScheme,
 
         // ── Page transitions ────────────────────────────────────
-        pageTransitionsTheme: const PageTransitionsTheme(
+        pageTransitionsTheme: PageTransitionsTheme(
           builders: <TargetPlatform, PageTransitionsBuilder>{
             TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           },
         ),
 

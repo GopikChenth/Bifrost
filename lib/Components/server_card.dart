@@ -44,6 +44,7 @@ class ServerCard extends StatefulWidget {
 class _ServerCardState extends State<ServerCard> {
   static const FileManagerService _fileManagerService = FileManagerService();
   double _scale = 1.0;
+  int? _pressedButtonIndex;
 
   Future<void> _openServerFolder(BuildContext context) async {
     final String? path = widget.serverPath;
@@ -124,7 +125,7 @@ class _ServerCardState extends State<ServerCard> {
                           Text(
                             widget.name,
                             style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -179,6 +180,12 @@ class _ServerCardState extends State<ServerCard> {
                         pressedForegroundColor: colors.onPrimaryContainer,
                         expanded: true,
                         isActive: widget.isBusy && !widget.isOnline,
+                        siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+                        onPressStateChanged: (bool isPressed) {
+                          setState(() {
+                            _pressedButtonIndex = isPressed ? 0 : null;
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -193,6 +200,12 @@ class _ServerCardState extends State<ServerCard> {
                         pressedForegroundColor: colors.onError,
                         expanded: true,
                         isActive: widget.isOnline,
+                        siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+                        onPressStateChanged: (bool isPressed) {
+                          setState(() {
+                            _pressedButtonIndex = isPressed ? 1 : null;
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -207,6 +220,12 @@ class _ServerCardState extends State<ServerCard> {
                       pressedBackgroundColor: colors.secondary,
                       pressedForegroundColor: colors.onSecondary,
                       isActive: false,
+                      siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+                      onPressStateChanged: (bool isPressed) {
+                        setState(() {
+                          _pressedButtonIndex = isPressed ? 2 : null;
+                        });
+                      },
                     ),
                     const SizedBox(width: 8),
                     MaterialExpressiveButton(
@@ -218,6 +237,12 @@ class _ServerCardState extends State<ServerCard> {
                       pressedBackgroundColor: colors.errorContainer,
                       pressedForegroundColor: colors.onErrorContainer,
                       isActive: false,
+                      siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 3 ? 0.0 : (3 < _pressedButtonIndex! ? -1.0 : 1.0),
+                      onPressStateChanged: (bool isPressed) {
+                        setState(() {
+                          _pressedButtonIndex = isPressed ? 3 : null;
+                        });
+                      },
                     ),
                   ],
                 ),
