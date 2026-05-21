@@ -50,11 +50,19 @@ class ServerManagerService extends ChangeNotifier {
   bool isLoadingServers = true;
 
   bool isCreatingServer = false;
+  bool _isCreateCancelled = false;
   String? activeDownloadServerName;
   String? activeDownloadFileName;
   int downloadedBytes = 0;
   int? totalDownloadBytes;
   String? lastErrorMessage;
+
+  void cancelCreateServer() {
+    if (isCreatingServer) {
+      _isCreateCancelled = true;
+      notifyListeners();
+    }
+  }
 
   List<BifrostServer> get servers => List<BifrostServer>.unmodifiable(_servers);
 
@@ -135,6 +143,7 @@ class ServerManagerService extends ChangeNotifier {
 
   Future<String?> createServer(AddServerResult newServer) async {
     isCreatingServer = true;
+    _isCreateCancelled = false;
     activeDownloadServerName = newServer.name;
     activeDownloadFileName = null;
     downloadedBytes = 0;
@@ -142,11 +151,21 @@ class ServerManagerService extends ChangeNotifier {
     lastErrorMessage = null;
     notifyListeners();
 
+    ServerStorageResult? storageResult;
     try {
-      final ServerStorageResult storageResult = await _serverStorageService
+      if (_isCreateCancelled) {
+        throw const ServerCreateCancelledException();
+      }
+      storageResult = await _serverStorageService
           .createServerStructure(newServer);
+      if (_isCreateCancelled) {
+        throw const ServerCreateCancelledException();
+      }
       final _ResolvedServerDownload downloadResult =
           await _downloadServerJar(newServer, storageResult);
+      if (_isCreateCancelled) {
+        throw const ServerCreateCancelledException();
+      }
 
       await _serverStorageService.writeDownloadMetadata(
         storage: storageResult,
@@ -164,18 +183,29 @@ class ServerManagerService extends ChangeNotifier {
 
       await loadStoredServers();
       return 'Created ${newServer.name} and downloaded ${downloadResult.artifact.fileName}';
-    } on OfficialServerDownloadException catch (error) {
-      lastErrorMessage = error.message;
-      return error.message;
-    } on PaperJarDownloadException catch (error) {
-      lastErrorMessage = error.message;
-      return error.message;
-    } on ServerStorageException catch (error) {
-      lastErrorMessage = error.message;
-      return error.message;
     } catch (error) {
-      lastErrorMessage = 'Unable to create the selected server: $error';
-      return lastErrorMessage;
+      if (storageResult != null) {
+        try {
+          await _serverStorageService.deleteServerDirectory(storageResult.serverDirectory.path);
+        } catch (_) {}
+      }
+      if (_isCreateCancelled) {
+        lastErrorMessage = 'Server creation cancelled.';
+        return 'Server creation cancelled.';
+      }
+      if (error is OfficialServerDownloadException) {
+        lastErrorMessage = error.message;
+        return error.message;
+      } else if (error is PaperJarDownloadException) {
+        lastErrorMessage = error.message;
+        return error.message;
+      } else if (error is ServerStorageException) {
+        lastErrorMessage = error.message;
+        return error.message;
+      } else {
+        lastErrorMessage = 'Unable to create the selected server: $error';
+        return lastErrorMessage;
+      }
     } finally {
       isCreatingServer = false;
       activeDownloadServerName = null;
@@ -190,10 +220,16 @@ class ServerManagerService extends ChangeNotifier {
     AddServerResult newServer,
     ServerStorageResult storageResult,
   ) async {
+    if (_isCreateCancelled) {
+      throw const ServerCreateCancelledException();
+    }
     if (newServer.serverType.toLowerCase() == 'paper') {
       final PaperJarArtifact artifact = await _paperJarService.resolveArtifact(
         newServer.version,
       );
+      if (_isCreateCancelled) {
+        throw const ServerCreateCancelledException();
+      }
       activeDownloadFileName = artifact.fileName;
       notifyListeners();
       final PaperJarDownloadResult result = await _paperJarService
@@ -201,6 +237,9 @@ class ServerManagerService extends ChangeNotifier {
             artifact: artifact,
             storage: storageResult,
             onProgress: (int receivedBytes, int? totalBytes) {
+              if (_isCreateCancelled) {
+                throw const ServerCreateCancelledException();
+              }
               downloadedBytes = receivedBytes;
               totalDownloadBytes = totalBytes;
               final DateTime now = DateTime.now();
@@ -215,6 +254,9 @@ class ServerManagerService extends ChangeNotifier {
 
     final OfficialServerArtifact artifact = await _officialServerDownloadService
         .resolveArtifact(newServer);
+    if (_isCreateCancelled) {
+      throw const ServerCreateCancelledException();
+    }
     activeDownloadFileName = artifact.fileName;
     notifyListeners();
     final OfficialServerDownloadResult result =
@@ -222,6 +264,9 @@ class ServerManagerService extends ChangeNotifier {
           artifact: artifact,
           storage: storageResult,
           onProgress: (int receivedBytes, int? totalBytes) {
+            if (_isCreateCancelled) {
+              throw const ServerCreateCancelledException();
+            }
             downloadedBytes = receivedBytes;
             totalDownloadBytes = totalBytes;
             final DateTime now = DateTime.now();
@@ -1056,4 +1101,10 @@ class _MinecraftVersionParts {
 
   final int featureVersion;
   final int minorVersion;
+}
+
+class ServerCreateCancelledException implements Exception {
+  const ServerCreateCancelledException();
+  @override
+  String toString() => 'ServerCreateCancelledException: The server creation was cancelled by the user.';
 }

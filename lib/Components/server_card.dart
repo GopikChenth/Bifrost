@@ -1,4 +1,5 @@
 import 'package:bifrost/Components/material_expressive_button.dart';
+import 'package:bifrost/Components/wavy_linear_progress_indicator.dart';
 import 'package:bifrost/Services/file_manager_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -268,6 +269,7 @@ class _ServerCardState extends State<ServerCard> {
                             foregroundColor: colors.onSecondaryContainer,
                             pressedBackgroundColor: colors.secondary,
                             pressedForegroundColor: colors.onSecondary,
+                            expanded: true,
                             isActive: false,
                             siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
                             onPressStateChanged: (bool isPressed) {
@@ -288,6 +290,7 @@ class _ServerCardState extends State<ServerCard> {
                             foregroundColor: colors.error,
                             pressedBackgroundColor: colors.errorContainer,
                             pressedForegroundColor: colors.onErrorContainer,
+                            expanded: true,
                             isActive: false,
                             siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 3 ? 0.0 : (3 < _pressedButtonIndex! ? -1.0 : 1.0),
                             onPressStateChanged: (bool isPressed) {
@@ -432,12 +435,14 @@ class ServerDownloadCard extends StatelessWidget {
     required this.progressLabel,
     this.fileName,
     this.progress,
+    this.onCancel,
   });
 
   final String serverName;
   final String progressLabel;
   final String? fileName;
   final double? progress;
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -454,12 +459,29 @@ class ServerDownloadCard extends StatelessWidget {
               children: <Widget>[
                 Icon(Icons.cloud_download_rounded, color: colors.primary),
                 const SizedBox(width: 10),
-                Text(
-                  'Downloading Server',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    'Downloading Server',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (onCancel != null) ...<Widget>[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: onCancel,
+                    tooltip: 'Cancel Download',
+                    style: IconButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(36, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 10),
@@ -474,9 +496,9 @@ class ServerDownloadCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(value: progress, minHeight: 6),
+            WavyLinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
             ),
             const SizedBox(height: 10),
             Text(

@@ -274,13 +274,16 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
       animatedLabel = null;
     }
 
-    final Widget buttonContent = Row(
-      mainAxisSize: widget.expanded ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        widget.icon,
-        if (animatedLabel != null) animatedLabel,
-      ],
+    final Widget buttonContent = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          widget.icon,
+          if (animatedLabel != null) animatedLabel,
+        ],
+      ),
     );
 
     Widget result = Transform.translate(
@@ -322,7 +325,9 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
                         style: theme.textTheme.labelLarge!.copyWith(
                           color: animatedFgColor,
                           fontWeight: FontWeight.w600,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                        maxLines: 1,
                         child: buttonContent,
                       ),
                     ),

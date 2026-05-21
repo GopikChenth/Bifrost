@@ -284,6 +284,7 @@ class _HomePageState extends State<HomePage>
                                             ? _formatBytes(
                                                 _serverManager.downloadedBytes)
                                             : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
+                                    onCancel: _serverManager.cancelCreateServer,
                                   ),
                                 )
                               : const SizedBox.shrink(
