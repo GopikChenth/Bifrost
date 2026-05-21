@@ -45,6 +45,27 @@ class _ServerCardState extends State<ServerCard> {
   static const FileManagerService _fileManagerService = FileManagerService();
   double _scale = 1.0;
   int? _pressedButtonIndex;
+  late final List<double> _activeProgresses;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeProgresses = <double>[
+      widget.isBusy && !widget.isOnline ? 1.0 : 0.0,
+      widget.isOnline ? 1.0 : 0.0,
+      0.0,
+      0.0,
+    ];
+  }
+
+  @override
+  void didUpdateWidget(ServerCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isOnline != widget.isOnline || oldWidget.isBusy != widget.isBusy) {
+      _activeProgresses[0] = widget.isBusy && !widget.isOnline ? 1.0 : 0.0;
+      _activeProgresses[1] = widget.isOnline ? 1.0 : 0.0;
+    }
+  }
 
   Future<void> _openServerFolder(BuildContext context) async {
     final String? path = widget.serverPath;
@@ -165,86 +186,120 @@ class _ServerCardState extends State<ServerCard> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: MaterialExpressiveButton(
-                        onPressed: widget.isBusy || widget.isOnline
-                            ? null
-                            : widget.onStartServer,
-                        icon: const Icon(Icons.rocket_launch_rounded),
-                        label: const Text('Start'),
-                        backgroundColor: colors.primary,
-                        foregroundColor: colors.onPrimary,
-                        pressedBackgroundColor: colors.primaryContainer,
-                        pressedForegroundColor: colors.onPrimaryContainer,
-                        expanded: true,
-                        isActive: widget.isBusy && !widget.isOnline,
-                        siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
-                        onPressStateChanged: (bool isPressed) {
-                          setState(() {
-                            _pressedButtonIndex = isPressed ? 0 : null;
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: MaterialExpressiveButton(
-                        onPressed: widget.isOnline ? widget.onStopServer : null,
-                        icon: const Icon(Icons.stop_circle_rounded),
-                        label: const Text('Stop'),
-                        backgroundColor: colors.errorContainer,
-                        foregroundColor: colors.onErrorContainer,
-                        pressedBackgroundColor: colors.error,
-                        pressedForegroundColor: colors.onError,
-                        expanded: true,
-                        isActive: widget.isOnline,
-                        siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
-                        onPressStateChanged: (bool isPressed) {
-                          setState(() {
-                            _pressedButtonIndex = isPressed ? 1 : null;
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    MaterialExpressiveButton(
-                      onPressed: widget.serverPath == null
-                          ? null
-                          : () => _openServerFolder(context),
-                      tooltip: 'Open Folder',
-                      icon: const Icon(Icons.folder_open_rounded),
-                      backgroundColor: colors.secondaryContainer,
-                      foregroundColor: colors.onSecondaryContainer,
-                      pressedBackgroundColor: colors.secondary,
-                      pressedForegroundColor: colors.onSecondary,
-                      isActive: false,
-                      siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
-                      onPressStateChanged: (bool isPressed) {
-                        setState(() {
-                          _pressedButtonIndex = isPressed ? 2 : null;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    MaterialExpressiveButton(
-                      onPressed: widget.isBusy ? null : widget.onDelete,
-                      tooltip: 'Delete',
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      backgroundColor: colors.surfaceContainerHighest,
-                      foregroundColor: colors.error,
-                      pressedBackgroundColor: colors.errorContainer,
-                      pressedForegroundColor: colors.onErrorContainer,
-                      isActive: false,
-                      siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 3 ? 0.0 : (3 < _pressedButtonIndex! ? -1.0 : 1.0),
-                      onPressStateChanged: (bool isPressed) {
-                        setState(() {
-                          _pressedButtonIndex = isPressed ? 3 : null;
-                        });
-                      },
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final double totalSpacing = 8.0 * 3;
+                    final double availableWidth = (constraints.maxWidth - totalSpacing).clamp(0.0, double.infinity);
+
+                    final double wStart = 1.5 + (1.5 * _activeProgresses[0]);
+                    final double wStop = 1.5 + (1.5 * _activeProgresses[1]);
+                    const double wFolder = 0.8;
+                    const double wDelete = 0.8;
+
+                    final double totalWeight = wStart + wStop + wFolder + wDelete;
+
+                    return Row(
+                      children: <Widget>[
+                        SizedBox(
+                          width: (wStart / totalWeight) * availableWidth,
+                          child: MaterialExpressiveButton(
+                            onPressed: widget.isBusy || widget.isOnline
+                                ? null
+                                : widget.onStartServer,
+                            icon: const Icon(Icons.rocket_launch_rounded),
+                            label: const Text('Start'),
+                            backgroundColor: colors.primary,
+                            foregroundColor: colors.onPrimary,
+                            pressedBackgroundColor: colors.primaryContainer,
+                            pressedForegroundColor: colors.onPrimaryContainer,
+                            expanded: true,
+                            isActive: widget.isBusy && !widget.isOnline,
+                            siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+                            hideLabelWhenInactive: true,
+                            onPressStateChanged: (bool isPressed) {
+                              setState(() {
+                                _pressedButtonIndex = isPressed ? 0 : null;
+                              });
+                            },
+                            onActiveProgressChanged: (double progress) {
+                              setState(() {
+                                _activeProgresses[0] = progress;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: (wStop / totalWeight) * availableWidth,
+                          child: MaterialExpressiveButton(
+                            onPressed: widget.isOnline ? widget.onStopServer : null,
+                            icon: const Icon(Icons.stop_circle_rounded),
+                            label: const Text('Stop'),
+                            backgroundColor: colors.errorContainer,
+                            foregroundColor: colors.onErrorContainer,
+                            pressedBackgroundColor: colors.error,
+                            pressedForegroundColor: colors.onError,
+                            expanded: true,
+                            isActive: widget.isOnline,
+                            siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+                            hideLabelWhenInactive: true,
+                            onPressStateChanged: (bool isPressed) {
+                              setState(() {
+                                _pressedButtonIndex = isPressed ? 1 : null;
+                              });
+                            },
+                            onActiveProgressChanged: (double progress) {
+                              setState(() {
+                                _activeProgresses[1] = progress;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: (wFolder / totalWeight) * availableWidth,
+                          child: MaterialExpressiveButton(
+                            onPressed: widget.serverPath == null
+                                ? null
+                                : () => _openServerFolder(context),
+                            tooltip: 'Open Folder',
+                            icon: const Icon(Icons.folder_open_rounded),
+                            backgroundColor: colors.secondaryContainer,
+                            foregroundColor: colors.onSecondaryContainer,
+                            pressedBackgroundColor: colors.secondary,
+                            pressedForegroundColor: colors.onSecondary,
+                            isActive: false,
+                            siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+                            onPressStateChanged: (bool isPressed) {
+                              setState(() {
+                                _pressedButtonIndex = isPressed ? 2 : null;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: (wDelete / totalWeight) * availableWidth,
+                          child: MaterialExpressiveButton(
+                            onPressed: widget.isBusy ? null : widget.onDelete,
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            backgroundColor: colors.surfaceContainerHighest,
+                            foregroundColor: colors.error,
+                            pressedBackgroundColor: colors.errorContainer,
+                            pressedForegroundColor: colors.onErrorContainer,
+                            isActive: false,
+                            siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 3 ? 0.0 : (3 < _pressedButtonIndex! ? -1.0 : 1.0),
+                            onPressStateChanged: (bool isPressed) {
+                              setState(() {
+                                _pressedButtonIndex = isPressed ? 3 : null;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 if (widget.runtimeMessage != null &&
                     widget.runtimeMessage!.trim().isNotEmpty) ...<Widget>[

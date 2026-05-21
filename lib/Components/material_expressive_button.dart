@@ -15,7 +15,9 @@ class MaterialExpressiveButton extends StatefulWidget {
     this.expanded = false,
     this.isActive = false,
     this.siblingDirection = 0.0,
+    this.hideLabelWhenInactive = false,
     this.onPressStateChanged,
+    this.onActiveProgressChanged,
   });
 
   final Widget icon;
@@ -29,7 +31,9 @@ class MaterialExpressiveButton extends StatefulWidget {
   final bool expanded;
   final bool isActive;
   final double siblingDirection;
+  final bool hideLabelWhenInactive;
   final ValueChanged<bool>? onPressStateChanged;
+  final ValueChanged<double>? onActiveProgressChanged;
 
   @override
   State<MaterialExpressiveButton> createState() =>
@@ -96,6 +100,7 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
   void _update() {
     if (mounted) {
       setState(() {});
+      widget.onActiveProgressChanged?.call(_activeController.value);
     }
   }
 
@@ -231,15 +236,50 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
     // Horizontal translation: shift away from pressed sibling (12 pixels max)
     final double translationX = _siblingController.value * 12.0;
 
+    final double activeProgress = _activeController.value.clamp(0.0, 1.0);
+    final double horizontalPadding = widget.label != null
+        ? (widget.hideLabelWhenInactive
+            ? 10.0 + (activeProgress * 6.0)
+            : 16.0)
+        : 10.0;
+
+    final Widget? animatedLabel;
+    if (widget.label != null) {
+      if (widget.hideLabelWhenInactive) {
+        animatedLabel = ClipRect(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            heightFactor: 1.0,
+            widthFactor: activeProgress,
+            child: Opacity(
+              opacity: activeProgress,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: widget.label!,
+                ),
+              ),
+            ),
+          ),
+        );
+      } else {
+        animatedLabel = Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: widget.label!,
+        );
+      }
+    } else {
+      animatedLabel = null;
+    }
+
     final Widget buttonContent = Row(
       mainAxisSize: widget.expanded ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
         widget.icon,
-        if (widget.label != null) ...<Widget>[
-          const SizedBox(width: 8),
-          widget.label!,
-        ],
+        if (animatedLabel != null) animatedLabel,
       ],
     );
 
@@ -269,9 +309,10 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
                   onTapCancel: isEnabled ? _handleTapCancel : null,
                   onTapUp: isEnabled ? _handleTapUp : null,
                   child: Padding(
-                    padding: widget.label != null
-                        ? const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
-                        : const EdgeInsets.all(10),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                      vertical: 10,
+                    ),
                     child: IconTheme(
                       data: IconThemeData(
                         color: animatedFgColor,
@@ -302,5 +343,55 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
     }
 
     return result;
+  }
+}
+
+class ExpressiveButtonRow extends StatelessWidget {
+  const ExpressiveButtonRow({
+    super.key,
+    required this.children,
+    required this.weights,
+    this.spacing = 8.0,
+  });
+
+  final List<Widget> children;
+  final List<double> weights;
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) {
+    assert(children.length == weights.length, 'Children and weights lists must be of the same length.');
+    if (children.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double totalSpacing = spacing * (children.length - 1);
+        final double availableWidth = (constraints.maxWidth - totalSpacing).clamp(0.0, double.infinity);
+        final double totalWeight = weights.reduce((double a, double b) => a + b);
+
+        final List<Widget> positionedChildren = <Widget>[];
+        for (int i = 0; i < children.length; i++) {
+          final double weight = weights[i];
+          final double width = totalWeight > 0
+              ? (weight / totalWeight) * availableWidth
+              : availableWidth / children.length;
+
+          positionedChildren.add(
+            SizedBox(
+              width: width,
+              child: children[i],
+            ),
+          );
+          if (i < children.length - 1) {
+            positionedChildren.add(SizedBox(width: spacing));
+          }
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.max,
+          children: positionedChildren,
+        );
+      },
+    );
   }
 }

@@ -33,6 +33,7 @@ class _ServerPageState extends State<ServerPage>
   bool _isLoadingLocalIp = true;
   late final AnimationController _entranceController;
   int? _pressedButtonIndex;
+  late final List<double> _activeProgresses;
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
@@ -72,6 +73,12 @@ class _ServerPageState extends State<ServerPage>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
+    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+    _activeProgresses = <double>[
+      server != null && server.isBusy && !server.isOnline ? 1.0 : 0.0,
+      server != null && server.isOnline ? 1.0 : 0.0,
+      0.0,
+    ];
     widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -79,8 +86,23 @@ class _ServerPageState extends State<ServerPage>
     });
   }
 
+  @override
+  void didUpdateWidget(ServerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.serverPath != widget.serverPath || oldWidget.serverManager != widget.serverManager) {
+      oldWidget.serverManager.removeListener(_refresh);
+      widget.serverManager.addListener(_refresh);
+      _refresh();
+    }
+  }
+
   void _refresh() {
     if (mounted) {
+      final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+      if (server != null) {
+        _activeProgresses[0] = server.isBusy && !server.isOnline ? 1.0 : 0.0;
+        _activeProgresses[1] = server.isOnline ? 1.0 : 0.0;
+      }
       setState(() {});
     }
   }
@@ -277,78 +299,92 @@ class _ServerPageState extends State<ServerPage>
           _staggeredChild(
             1,
             totalSections,
-            Row(
+            ExpressiveButtonRow(
+              weights: <double>[
+                1.5 + (1.5 * _activeProgresses[0]),
+                1.5 + (1.5 * _activeProgresses[1]),
+                1.5 + (1.5 * _activeProgresses[2]),
+              ],
               children: <Widget>[
-                Expanded(
-                  child: MaterialExpressiveButton(
-                    onPressed: canStart
-                        ? () {
-                            _startServer(server);
-                          }
-                        : null,
-                    icon: const Icon(Icons.rocket_launch_rounded),
-                    label: const Text('Start'),
-                    backgroundColor: colors.primary,
-                    foregroundColor: colors.onPrimary,
-                    pressedBackgroundColor: colors.primaryContainer,
-                    pressedForegroundColor: colors.onPrimaryContainer,
-                    expanded: true,
-                    isActive: server.isBusy && !server.isOnline,
-                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
-                    onPressStateChanged: (bool isPressed) {
-                      setState(() {
-                        _pressedButtonIndex = isPressed ? 0 : null;
-                      });
-                    },
-                  ),
+                MaterialExpressiveButton(
+                  onPressed: canStart
+                      ? () {
+                          _startServer(server);
+                        }
+                      : null,
+                  icon: const Icon(Icons.rocket_launch_rounded),
+                  label: const Text('Start'),
+                  backgroundColor: colors.primary,
+                  foregroundColor: colors.onPrimary,
+                  pressedBackgroundColor: colors.primaryContainer,
+                  pressedForegroundColor: colors.onPrimaryContainer,
+                  expanded: true,
+                  isActive: server.isBusy && !server.isOnline,
+                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  hideLabelWhenInactive: true,
+                  onPressStateChanged: (bool isPressed) {
+                    setState(() {
+                      _pressedButtonIndex = isPressed ? 0 : null;
+                    });
+                  },
+                  onActiveProgressChanged: (double progress) {
+                    setState(() {
+                      _activeProgresses[0] = progress;
+                    });
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: MaterialExpressiveButton(
-                    onPressed: canStop
-                        ? () {
-                            widget.serverManager.stopServer(server);
-                          }
-                        : null,
-                    icon: const Icon(Icons.stop_circle_rounded),
-                    label: const Text('Stop'),
-                    backgroundColor: colors.errorContainer,
-                    foregroundColor: colors.onErrorContainer,
-                    pressedBackgroundColor: colors.error,
-                    pressedForegroundColor: colors.onError,
-                    expanded: true,
-                    isActive: server.isOnline,
-                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
-                    onPressStateChanged: (bool isPressed) {
-                      setState(() {
-                        _pressedButtonIndex = isPressed ? 1 : null;
-                      });
-                    },
-                  ),
+                MaterialExpressiveButton(
+                  onPressed: canStop
+                      ? () {
+                          widget.serverManager.stopServer(server);
+                        }
+                      : null,
+                  icon: const Icon(Icons.stop_circle_rounded),
+                  label: const Text('Stop'),
+                  backgroundColor: colors.errorContainer,
+                  foregroundColor: colors.onErrorContainer,
+                  pressedBackgroundColor: colors.error,
+                  pressedForegroundColor: colors.onError,
+                  expanded: true,
+                  isActive: server.isOnline,
+                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  hideLabelWhenInactive: true,
+                  onPressStateChanged: (bool isPressed) {
+                    setState(() {
+                      _pressedButtonIndex = isPressed ? 1 : null;
+                    });
+                  },
+                  onActiveProgressChanged: (double progress) {
+                    setState(() {
+                      _activeProgresses[1] = progress;
+                    });
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: MaterialExpressiveButton(
-                    onPressed: canRestart
-                        ? () {
-                            widget.serverManager.restartServer(server);
-                          }
-                        : null,
-                    icon: const Icon(Icons.restart_alt_rounded),
-                    label: const Text('Restart'),
-                    backgroundColor: colors.secondaryContainer,
-                    foregroundColor: colors.onSecondaryContainer,
-                    pressedBackgroundColor: colors.secondary,
-                    pressedForegroundColor: colors.onSecondary,
-                    expanded: true,
-                    isActive: false,
-                    siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
-                    onPressStateChanged: (bool isPressed) {
-                      setState(() {
-                        _pressedButtonIndex = isPressed ? 2 : null;
-                      });
-                    },
-                  ),
+                MaterialExpressiveButton(
+                  onPressed: canRestart
+                      ? () {
+                          widget.serverManager.restartServer(server);
+                        }
+                      : null,
+                  icon: const Icon(Icons.restart_alt_rounded),
+                  label: const Text('Restart'),
+                  backgroundColor: colors.secondaryContainer,
+                  foregroundColor: colors.onSecondaryContainer,
+                  pressedBackgroundColor: colors.secondary,
+                  pressedForegroundColor: colors.onSecondary,
+                  expanded: true,
+                  isActive: false,
+                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  onPressStateChanged: (bool isPressed) {
+                    setState(() {
+                      _pressedButtonIndex = isPressed ? 2 : null;
+                    });
+                  },
+                  onActiveProgressChanged: (double progress) {
+                    setState(() {
+                      _activeProgresses[2] = progress;
+                    });
+                  },
                 ),
               ],
             ),
