@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_navigation_drawer.dart';
+import 'package:bifrost/Components/material_expressive_button.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
@@ -25,9 +27,11 @@ class ServerPage extends StatefulWidget {
   State<ServerPage> createState() => _ServerPageState();
 }
 
-class _ServerPageState extends State<ServerPage> {
+class _ServerPageState extends State<ServerPage>
+    with SingleTickerProviderStateMixin {
   String? _localIpAddress;
   bool _isLoadingLocalIp = true;
+  late final AnimationController _entranceController;
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
@@ -63,8 +67,15 @@ class _ServerPageState extends State<ServerPage> {
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
     widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _entranceController.forward();
+    });
   }
 
   void _refresh() {
@@ -123,8 +134,29 @@ class _ServerPageState extends State<ServerPage> {
 
   @override
   void dispose() {
+    _entranceController.dispose();
     widget.serverManager.removeListener(_refresh);
     super.dispose();
+  }
+
+  Widget _staggeredChild(int index, int total, Widget child) {
+    final double start = math.min(index / math.max(total, 1), 0.7);
+    final double end = math.min(start + 0.5, 1.0);
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (BuildContext context, Widget? c) {
+        final double t = Interval(start, end, curve: Curves.easeOutCubic)
+            .transform(_entranceController.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 24 * (1 - t)),
+            child: c,
+          ),
+        );
+      },
+      child: child,
+    );
   }
 
   @override
@@ -146,9 +178,12 @@ class _ServerPageState extends State<ServerPage> {
     final bool canStop = server.isOnline;
     final bool canRestart = server.isOnline && !server.isBusy;
 
+    const int totalSections = 5;
+
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
         server: server,
+        selectedIndex: ServerDrawerIndex.dashboard,
         onOpenDashboard: () {
           Navigator.of(context).pop();
         },
@@ -236,119 +271,160 @@ class _ServerPageState extends State<ServerPage> {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: <Widget>[
-          _HeroPanel(server: server),
+          _staggeredChild(0, totalSections, _HeroPanel(server: server)),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: <Widget>[
-              FilledButton.icon(
-                onPressed: canStart
-                    ? () {
-                        _startServer(server);
-                      }
-                    : null,
-                icon: const Icon(Icons.rocket_launch_rounded),
-                label: const Text('Start'),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: canStop
-                    ? () {
-                        widget.serverManager.stopServer(server);
-                      }
-                    : null,
-                icon: const Icon(Icons.stop_circle_rounded),
-                label: const Text('Stop'),
-                style: FilledButton.styleFrom(
-                  foregroundColor: colors.onErrorContainer,
-                  backgroundColor: colors.errorContainer,
+          _staggeredChild(
+            1,
+            totalSections,
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: MaterialExpressiveButton(
+                    onPressed: canStart
+                        ? () {
+                            _startServer(server);
+                          }
+                        : null,
+                    icon: const Icon(Icons.rocket_launch_rounded),
+                    label: const Text('Start'),
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.onPrimary,
+                    pressedBackgroundColor: colors.primaryContainer,
+                    pressedForegroundColor: colors.onPrimaryContainer,
+                    expanded: true,
+                    isActive: server.isBusy && !server.isOnline,
+                  ),
                 ),
-              ),
-              OutlinedButton.icon(
-                onPressed: canRestart
-                    ? () {
-                        widget.serverManager.restartServer(server);
-                      }
-                    : null,
-                icon: const Icon(Icons.restart_alt_rounded),
-                label: const Text('Restart'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _LocalNetworkPanel(
-            isLoading: _isLoadingLocalIp,
-            ipAddress: _localIpAddress,
-          ),
-          const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: MediaQuery.sizeOf(context).width > 640 ? 4 : 2,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.85,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: <Widget>[
-              _DashboardMetric(
-                icon: Icons.dns_rounded,
-                label: 'Server Type',
-                value: server.type,
-              ),
-              _DashboardMetric(
-                icon: Icons.new_releases_rounded,
-                label: 'Version',
-                value: server.version,
-              ),
-              const _DashboardMetric(
-                icon: Icons.groups_rounded,
-                label: 'Players Online',
-                value: 'Not tracked',
-              ),
-              _DashboardMetric(
-                icon: Icons.memory_rounded,
-                label: 'Allocated RAM',
-                value: server.memoryLabel,
-              ),
-              const _DashboardMetric(
-                icon: Icons.speed_rounded,
-                label: 'RAM Usage',
-                value: 'Pending',
-              ),
-              _DashboardMetric(
-                icon: Icons.terminal_rounded,
-                label: 'Console',
-                value: server.consoleLabel,
-              ),
-              _DashboardMetric(
-                icon: Icons.power_settings_new_rounded,
-                label: 'Runtime State',
-                value: server.status,
-              ),
-              _DashboardPathMetric(path: server.path),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Runtime Message',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: MaterialExpressiveButton(
+                    onPressed: canStop
+                        ? () {
+                            widget.serverManager.stopServer(server);
+                          }
+                        : null,
+                    icon: const Icon(Icons.stop_circle_rounded),
+                    label: const Text('Stop'),
+                    backgroundColor: colors.errorContainer,
+                    foregroundColor: colors.onErrorContainer,
+                    pressedBackgroundColor: colors.error,
+                    pressedForegroundColor: colors.onError,
+                    expanded: true,
+                    isActive: server.isOnline,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: MaterialExpressiveButton(
+                    onPressed: canRestart
+                        ? () {
+                            widget.serverManager.restartServer(server);
+                          }
+                        : null,
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    label: const Text('Restart'),
+                    backgroundColor: colors.secondaryContainer,
+                    foregroundColor: colors.onSecondaryContainer,
+                    pressedBackgroundColor: colors.secondary,
+                    pressedForegroundColor: colors.onSecondary,
+                    expanded: true,
+                    isActive: false,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(18),
+          const SizedBox(height: 12),
+          _staggeredChild(
+            2,
+            totalSections,
+            _LocalNetworkPanel(
+              isLoading: _isLoadingLocalIp,
+              ipAddress: _localIpAddress,
             ),
-            child: Text(
-              server.runtimeMessage?.trim().isNotEmpty == true
-                  ? server.runtimeMessage!
-                  : 'No runtime message yet.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
+          ),
+          const SizedBox(height: 12),
+          _staggeredChild(
+            3,
+            totalSections,
+            GridView.count(
+              crossAxisCount: MediaQuery.sizeOf(context).width > 640 ? 4 : 2,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.85,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: <Widget>[
+                _DashboardMetric(
+                  icon: Icons.dns_rounded,
+                  label: 'Server Type',
+                  value: server.type,
+                ),
+                _DashboardMetric(
+                  icon: Icons.new_releases_rounded,
+                  label: 'Version',
+                  value: server.version,
+                ),
+                const _DashboardMetric(
+                  icon: Icons.groups_rounded,
+                  label: 'Players Online',
+                  value: 'Not tracked',
+                ),
+                _DashboardMetric(
+                  icon: Icons.memory_rounded,
+                  label: 'Allocated RAM',
+                  value: server.memoryLabel,
+                ),
+                const _DashboardMetric(
+                  icon: Icons.speed_rounded,
+                  label: 'RAM Usage',
+                  value: 'Pending',
+                ),
+                _DashboardMetric(
+                  icon: Icons.terminal_rounded,
+                  label: 'Console',
+                  value: server.consoleLabel,
+                ),
+                _DashboardMetric(
+                  icon: Icons.power_settings_new_rounded,
+                  label: 'Runtime State',
+                  value: server.status,
+                ),
+                _DashboardPathMetric(path: server.path),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _staggeredChild(
+            4,
+            totalSections,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Runtime Message',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Text(
+                    server.runtimeMessage?.trim().isNotEmpty == true
+                        ? server.runtimeMessage!
+                        : 'No runtime message yet.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -367,28 +443,35 @@ class _HeroPanel extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            colors.primaryContainer,
-            colors.tertiaryContainer,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-      ),
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 3000),
+      builder: (BuildContext context, double value, Widget? child) {
+        return Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: <Color>[
+                colors.primaryContainer,
+                colors.tertiaryContainer,
+              ],
+              begin: Alignment(-1.0 + value * 0.4, -1.0),
+              end: Alignment(1.0 - value * 0.4, 1.0),
+            ),
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: child,
+        );
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(
             Icons.storage_rounded,
-            size: 30,
+            size: 32,
             color: colors.onPrimaryContainer,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             server.name,
             style: theme.textTheme.headlineSmall?.copyWith(
@@ -400,7 +483,7 @@ class _HeroPanel extends StatelessWidget {
           Text(
             '${server.type} • ${server.version}',
             style: theme.textTheme.titleMedium?.copyWith(
-              color: colors.onPrimaryContainer.withOpacity(0.78),
+              color: colors.onPrimaryContainer.withValues(alpha: 0.78),
             ),
           ),
         ],
@@ -424,23 +507,22 @@ class _LocalNetworkPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    final String? address = ipAddress == null
-        ? null
-        : '${ipAddress!}:$_minecraftPort';
+    final String? address =
+        ipAddress == null ? null : '${ipAddress!}:$_minecraftPort';
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         children: <Widget>[
           Container(
-            width: 42,
-            height: 42,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: colors.primaryContainer,
               borderRadius: BorderRadius.circular(14),
@@ -520,11 +602,11 @@ class _DashboardMetric extends StatelessWidget {
     final ColorScheme colors = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(9),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -570,11 +652,11 @@ class _DashboardPathMetric extends StatelessWidget {
     final ColorScheme colors = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(9),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,9 +704,12 @@ class _StatusPill extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
-    return DecoratedBox(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: isOnline ? colors.primaryContainer : colors.surfaceContainerHigh,
+        color:
+            isOnline ? colors.primaryContainer : colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(

@@ -11,7 +11,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final SettingsRepository _settingsRepository = const SettingsRepository();
   final ServerStorageService _serverStorageService =
       const ServerStorageService();
@@ -24,9 +24,15 @@ class _SettingsPageState extends State<SettingsPage>
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
 
+  late final AnimationController _entranceController;
+
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     WidgetsBinding.instance.addObserver(this);
     _loadSettings();
   }
@@ -76,6 +82,7 @@ class _SettingsPageState extends State<SettingsPage>
         setState(() {
           _isLoading = false;
         });
+        _entranceController.forward();
       }
     }
   }
@@ -164,9 +171,30 @@ class _SettingsPageState extends State<SettingsPage>
 
   @override
   void dispose() {
+    _entranceController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _customPathController.dispose();
     super.dispose();
+  }
+
+  Widget _stagger(int index, Widget child) {
+    final double start = (index * 0.3).clamp(0.0, 0.6);
+    final double end = (start + 0.5).clamp(0.0, 1.0);
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (BuildContext context, Widget? c) {
+        final double t = Interval(start, end, curve: Curves.easeOutCubic)
+            .transform(_entranceController.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 24 * (1 - t)),
+            child: c,
+          ),
+        );
+      },
+      child: child,
+    );
   }
 
   @override
@@ -182,188 +210,210 @@ class _SettingsPageState extends State<SettingsPage>
               padding: const EdgeInsets.all(16),
               children: <Widget>[
                 // ---- Storage permission card ----
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _hasAllFilesAccess
-                            ? colors.outlineVariant
-                            : colors.error.withOpacity(0.5),
+                _stagger(
+                  0,
+                  Card(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _hasAllFilesAccess
+                              ? colors.outlineVariant
+                              : colors.error.withValues(alpha: 0.5),
+                        ),
+                        borderRadius: BorderRadius.circular(28),
                       ),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Icon(
-                              _hasAllFilesAccess
-                                  ? Icons.check_circle_rounded
-                                  : Icons.warning_amber_rounded,
-                              color: _hasAllFilesAccess
-                                  ? colors.primary
-                                  : colors.error,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Storage Access',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                child: Icon(
+                                  _hasAllFilesAccess
+                                      ? Icons.check_circle_rounded
+                                      : Icons.warning_amber_rounded,
+                                  key: ValueKey<bool>(_hasAllFilesAccess),
+                                  color: _hasAllFilesAccess
+                                      ? colors.primary
+                                      : colors.error,
+                                ),
                               ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Storage Access',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _hasAllFilesAccess
+                                ? 'All files access is granted. Bifrost can read and write server files directly.'
+                                : 'Bifrost needs "All files access" to manage server files. '
+                                    'Tap the button below to grant it in system settings.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          if (!_hasAllFilesAccess) ...<Widget>[
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: _requestAllFilesAccess,
+                              icon: const Icon(Icons.settings_rounded),
+                              label: const Text('Grant All Files Access'),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _hasAllFilesAccess
-                              ? 'All files access is granted. Bifrost can read and write server files directly.'
-                              : 'Bifrost needs "All files access" to manage server files. '
-                                  'Tap the button below to grant it in system settings.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                        if (!_hasAllFilesAccess) ...<Widget>[
-                          const SizedBox(height: 16),
-                          FilledButton.icon(
-                            onPressed: _requestAllFilesAccess,
-                            icon: const Icon(Icons.settings_rounded),
-                            label: const Text('Grant All Files Access'),
-                          ),
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
 
                 // ---- Server directory card ----
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Server Directory',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'All server files are stored in this folder. '
-                          'Each server gets its own subdirectory.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Use default storage'),
-                          subtitle: const Text(
-                            ServerDirectorySettings.defaultDirectoryPath,
-                          ),
-                          value: _useDefaultDirectory,
-                          onChanged: _setDefaultDirectory,
-                        ),
-                        if (!_useDefaultDirectory) ...<Widget>[
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Expanded(
-                                child: TextField(
-                                  controller: _customPathController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Custom directory path',
-                                    hintText: '/storage/emulated/0/MyServers',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  onChanged: (String value) {
-                                    setState(() {
-                                      _resolvedDirectoryPath =
-                                          value.trim().isEmpty
-                                              ? ServerDirectorySettings
-                                                    .defaultDirectoryPath
-                                              : value.trim();
-                                    });
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                height: 56,
-                                child: FilledButton.tonal(
-                                  onPressed: _pickDirectory,
-                                  style: FilledButton.styleFrom(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.folder_open_rounded,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: colors.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                'Active server root',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              SelectableText(
-                                _resolvedDirectoryPath,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_statusMessage != null) ...<Widget>[
-                          const SizedBox(height: 16),
+                _stagger(
+                  1,
+                  Card(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.outlineVariant),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                           Text(
-                            _statusMessage!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.error,
+                            'Server Directory',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'All server files are stored in this folder. '
+                            'Each server gets its own subdirectory.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Use default storage'),
+                            subtitle: const Text(
+                              ServerDirectorySettings.defaultDirectoryPath,
+                            ),
+                            value: _useDefaultDirectory,
+                            onChanged: _setDefaultDirectory,
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: !_useDefaultDirectory
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Expanded(
+                                          child: TextField(
+                                            controller: _customPathController,
+                                            decoration: const InputDecoration(
+                                              labelText:
+                                                  'Custom directory path',
+                                              hintText:
+                                                  '/storage/emulated/0/MyServers',
+                                            ),
+                                            onChanged: (String value) {
+                                              setState(() {
+                                                _resolvedDirectoryPath =
+                                                    value.trim().isEmpty
+                                                        ? ServerDirectorySettings
+                                                              .defaultDirectoryPath
+                                                        : value.trim();
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          height: 56,
+                                          child: FilledButton.tonal(
+                                            onPressed: _pickDirectory,
+                                            style: FilledButton.styleFrom(
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.folder_open_rounded,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: colors.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Active server root',
+                                  style:
+                                      theme.textTheme.labelMedium?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SelectableText(
+                                  _resolvedDirectoryPath,
+                                  style:
+                                      theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: _statusMessage != null
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 16),
+                                    child: Text(
+                                      _statusMessage!,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: colors.error,
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -373,7 +423,23 @@ class _SettingsPageState extends State<SettingsPage>
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: FilledButton(
           onPressed: _isLoading || _isSaving ? null : _saveSettings,
-          child: Text(_isSaving ? 'Saving...' : 'Save Settings'),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _isSaving
+                ? const SizedBox(
+                    key: ValueKey<String>('saving'),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Save Settings',
+                    key: ValueKey<String>('save'),
+                  ),
+          ),
         ),
       ),
     );

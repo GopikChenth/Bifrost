@@ -3,12 +3,19 @@ import 'dart:io';
 
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
+import 'package:bifrost/Services/google_drive_sync_service.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'package:bifrost/Services/paper_jar_service.dart';
 import 'package:bifrost/Services/vanilla_jar_service.dart';
 import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Services/local_runtime_service.dart';
 import 'package:bifrost/Utils/local_runtime_models.dart';
+import 'package:bifrost/Utils/zip_utility.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 class ServerManagerService extends ChangeNotifier {
   ServerManagerService({
@@ -34,7 +41,14 @@ class ServerManagerService extends ChangeNotifier {
   Timer? _serverStatusPollTimer;
   DateTime _lastProgressNotify = DateTime(0);
 
+  final Map<String, Set<String>> _onlinePlayersByServerPath = <String, Set<String>>{};
+  final Map<String, int> _playtimeSecondsByServerPath = <String, int>{};
+  final Map<String, DateTime?> _lastSyncTimeByServerPath = <String, DateTime?>{};
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+
   bool isLoadingServers = true;
+
   bool isCreatingServer = false;
   String? activeDownloadServerName;
   String? activeDownloadFileName;
@@ -66,6 +80,24 @@ class ServerManagerService extends ChangeNotifier {
     return players;
   }
 
+  List<String> onlinePlayersFor(String serverPath) {
+    final List<String> players =
+        (_onlinePlayersByServerPath[serverPath] ?? <String>{}).toList();
+    players.sort(
+      (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
+    );
+    return players;
+  }
+
+  int playtimeFor(String serverPath) {
+    return _playtimeSecondsByServerPath[serverPath] ?? 0;
+  }
+
+  DateTime? lastSyncTimeFor(String serverPath) {
+    return _lastSyncTimeByServerPath[serverPath];
+  }
+
+
   double? get downloadProgress {
     final int? total = totalDownloadBytes;
     if (total == null || total <= 0) {
@@ -84,6 +116,14 @@ class ServerManagerService extends ChangeNotifier {
         ..clear()
         ..addAll(storedServers.map(BifrostServer.fromStorageMap));
       lastErrorMessage = null;
+
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      for (final BifrostServer server in _servers) {
+        final String? syncTimeStr = prefs.getString('gdrive_last_sync_${server.path}');
+        if (syncTimeStr != null) {
+          _lastSyncTimeByServerPath[server.path] = DateTime.tryParse(syncTimeStr);
+        }
+      }
     } on ServerStorageException catch (error) {
       lastErrorMessage = error.message;
     } finally {
@@ -91,6 +131,7 @@ class ServerManagerService extends ChangeNotifier {
       notifyListeners();
     }
   }
+
 
   Future<String?> createServer(AddServerResult newServer) async {
     isCreatingServer = true;
@@ -662,7 +703,29 @@ class ServerManagerService extends ChangeNotifier {
             : server.path;
         if (targetServerPath != null) {
           _applyServerStatus(serverPath: targetServerPath, status: status);
+          if (status.state == 'running') {
+            final Set<String>? onlinePlayers = _onlinePlayersByServerPath[targetServerPath];
+            if (onlinePlayers != null && onlinePlayers.isNotEmpty) {
+              final int newPlaytime = (_playtimeSecondsByServerPath[targetServerPath] ?? 0) + 2;
+              _playtimeSecondsByServerPath[targetServerPath] = newPlaytime;
+              notifyListeners();
+
+              if (newPlaytime >= 300) {
+                _playtimeSecondsByServerPath[targetServerPath] = 0;
+                final SharedPreferences prefs = await SharedPreferences.getInstance();
+                final bool autoSyncEnabled = prefs.getBool('gdrive_autosync_$targetServerPath') ?? false;
+                final GoogleSignInAccount? user = GoogleDriveSyncService.instance.currentUser;
+                if (autoSyncEnabled && user != null) {
+                  final BifrostServer? targetServer = serverByPath(targetServerPath);
+                  if (targetServer != null) {
+                    syncWorldToGoogleDrive(targetServer);
+                  }
+                }
+              }
+            }
+          }
         }
+
         if (!status.isBusy) {
           timer.cancel();
         }
@@ -707,8 +770,37 @@ class ServerManagerService extends ChangeNotifier {
         status.consoleOutput,
       );
       _rememberPlayersFromConsole(serverPath, status.consoleOutput);
+      _updateOnlinePlayersFromConsole(serverPath, status.consoleOutput);
     }
   }
+
+  void _updateOnlinePlayersFromConsole(String serverPath, String consoleOutput) {
+    final Set<String> online = _onlinePlayersByServerPath.putIfAbsent(
+      serverPath,
+      () => <String>{},
+    );
+
+    final RegExp joinPattern = RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b');
+    final RegExp leavePattern = RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b');
+
+    for (final String line in consoleOutput.split('\n')) {
+      final RegExpMatch? joinMatch = joinPattern.firstMatch(line);
+      if (joinMatch != null) {
+        final String? player = joinMatch.group(1);
+        if (player != null && player.trim().isNotEmpty) {
+          online.add(player.trim());
+        }
+      }
+      final RegExpMatch? leaveMatch = leavePattern.firstMatch(line);
+      if (leaveMatch != null) {
+        final String? player = leaveMatch.group(1);
+        if (player != null && player.trim().isNotEmpty) {
+          online.remove(player.trim());
+        }
+      }
+    }
+  }
+
 
   static const int _maxConsoleLines = 500;
 
@@ -766,12 +858,133 @@ class ServerManagerService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String?> syncWorldToGoogleDrive(BifrostServer server) async {
+    if (_isSyncing) {
+      return 'Sync already in progress.';
+    }
+
+    _isSyncing = true;
+    notifyListeners();
+
+    File? zipFile;
+    try {
+      final String worldPath = await resolveWorldDirectoryPath(server);
+      final Directory worldDir = Directory(worldPath);
+      if (!await worldDir.exists()) {
+        throw Exception('World directory does not exist at $worldPath');
+      }
+
+      final Directory cacheDir = await getTemporaryDirectory();
+      zipFile = File('${cacheDir.path}/bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip');
+
+      if (server.isOnline) {
+        await sendServerCommand(server: server, command: 'save-all flush');
+        await Future<void>.delayed(const Duration(seconds: 3));
+        await sendServerCommand(server: server, command: 'save-off');
+      }
+
+      await ZipUtility.zipDirectory(worldDir, zipFile);
+
+      if (server.isOnline) {
+        await sendServerCommand(server: server, command: 'save-on');
+      }
+
+      final String fileId = await GoogleDriveSyncService.instance.uploadWorldSyncFile(
+        serverName: server.name,
+        zipFile: zipFile,
+        localWorldPath: worldPath,
+      );
+
+      final DateTime now = DateTime.now();
+      _lastSyncTimeByServerPath[server.path] = now;
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('gdrive_last_sync_${server.path}', now.toIso8601String());
+
+      return 'Successfully backed up world to Google Drive! File ID: $fileId';
+    } catch (e) {
+      if (server.isOnline) {
+        await sendServerCommand(server: server, command: 'save-on');
+      }
+      return 'Failed to sync to Google Drive: ${e.toString()}';
+    } finally {
+      if (zipFile != null && zipFile.existsSync()) {
+        try {
+          zipFile.deleteSync();
+        } catch (_) {}
+      }
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> downloadAndSyncWorldFromGoogleDrive(BifrostServer server, String fileId) async {
+    if (_isSyncing) {
+      return 'Sync already in progress.';
+    }
+
+    _isSyncing = true;
+    notifyListeners();
+
+    File? zipFile;
+    try {
+      if (server.isOnline || server.isBusy) {
+        await stopServer(server);
+        int waitAttempts = 0;
+        while (server.isOnline && waitAttempts < 10) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          waitAttempts++;
+        }
+        if (server.isOnline) {
+          throw Exception('Could not stop server automatically. Please stop the server manually before syncing.');
+        }
+      }
+
+      final Directory cacheDir = await getTemporaryDirectory();
+      zipFile = File('${cacheDir.path}/bifrost_sync_download_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip');
+
+      await GoogleDriveSyncService.instance.downloadWorldSyncFile(
+        fileId: fileId,
+        destinationFile: zipFile,
+      );
+
+      final String worldPath = await resolveWorldDirectoryPath(server);
+      final Directory worldDir = Directory(worldPath);
+
+      if (await worldDir.exists()) {
+        try {
+          await exportWorldBackup(server);
+        } catch (_) {}
+        await worldDir.delete(recursive: true);
+      }
+
+      await ZipUtility.unzipFile(zipFile, worldDir);
+
+      final DateTime now = DateTime.now();
+      _lastSyncTimeByServerPath[server.path] = now;
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('gdrive_last_sync_${server.path}', now.toIso8601String());
+
+      return 'Successfully downloaded and synced world from Google Drive!';
+    } catch (e) {
+      return 'Failed to download and sync: ${e.toString()}';
+    } finally {
+      if (zipFile != null && zipFile.existsSync()) {
+        try {
+          zipFile.deleteSync();
+        } catch (_) {}
+      }
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _serverStatusPollTimer?.cancel();
     super.dispose();
   }
 }
+
 
 class _ResolvedServerArtifact {
   const _ResolvedServerArtifact({

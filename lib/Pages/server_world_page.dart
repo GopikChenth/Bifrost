@@ -4,7 +4,9 @@ import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
+import 'package:bifrost/Pages/google_drive_sync_page.dart';
 import 'package:bifrost/Pages/world_options_page.dart';
+
 import 'package:bifrost/Services/file_manager_service.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:file_picker/file_picker.dart';
@@ -123,33 +125,19 @@ class _WorldPageState extends State<WorldPage> {
     }
   }
 
-  Future<void> _backupToGoogleDrive(BifrostServer server) async {
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Backup world'),
-          content: const Text(
-            'This will create a copy of the current world folder '
-            'inside the server\'s backups directory.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _runAction(() => widget.serverManager.exportWorldBackup(server));
-              },
-              child: const Text('Create Backup'),
-            ),
-          ],
-        );
-      },
+  void _openGoogleDriveSync(BifrostServer server) {
+    Navigator.of(context).push(
+      MaterialPageRoute<GoogleDriveSyncPage>(
+        builder: (BuildContext context) {
+          return GoogleDriveSyncPage(
+            serverPath: server.path,
+            serverManager: widget.serverManager,
+          );
+        },
+      ),
     );
   }
+
 
   void _openWorldOptions(BifrostServer server) {
     Navigator.of(context).push(
@@ -177,6 +165,7 @@ class _WorldPageState extends State<WorldPage> {
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
         server: server,
+        selectedIndex: ServerDrawerIndex.world,
         onOpenDashboard: () {
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacement(
@@ -247,10 +236,16 @@ class _WorldPageState extends State<WorldPage> {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: <Widget>[
-          if (_message != null) ...<Widget>[
-            _WorldMessage(message: _message!),
-            const SizedBox(height: 10),
-          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _message != null
+                ? Padding(
+                    key: ValueKey<String>(_message!),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _WorldMessage(message: _message!),
+                  )
+                : const SizedBox.shrink(key: ValueKey<String>('no-msg')),
+          ),
           _WorldHeaderCard(
             worldPath: _worldPath ?? 'Resolving world folder...',
             isOnline: server.isOnline,
@@ -276,8 +271,9 @@ class _WorldPageState extends State<WorldPage> {
                 subtitle: 'Backup world to Drive',
                 icon: Icons.cloud_upload_rounded,
                 enabled: !_isBusy,
-                onTap: () => _backupToGoogleDrive(server),
+                onTap: () => _openGoogleDriveSync(server),
               ),
+
               _WorldActionTile(
                 title: 'Upload',
                 subtitle: 'Replace world from folder',
@@ -294,7 +290,7 @@ class _WorldPageState extends State<WorldPage> {
               ),
               _WorldActionTile(
                 title: 'Files',
-                subtitle: 'Open world in Material Files',
+                subtitle: 'Open world in file manager',
                 icon: Icons.folder_open_rounded,
                 enabled: !_isBusy,
                 onTap: _openWorldFiles,
@@ -308,10 +304,16 @@ class _WorldPageState extends State<WorldPage> {
               ),
             ],
           ),
-          if (_isBusy) ...<Widget>[
-            const SizedBox(height: 16),
-            const LinearProgressIndicator(),
-          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _isBusy
+                ? const Padding(
+                    key: ValueKey<String>('busy'),
+                    padding: EdgeInsets.only(top: 16),
+                    child: LinearProgressIndicator(),
+                  )
+                : const SizedBox.shrink(key: ValueKey<String>('idle')),
+          ),
         ],
       ),
     );
@@ -329,21 +331,29 @@ class _WorldHeaderCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.public_rounded, color: colors.primary, size: 36),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.public_rounded, color: colors.onPrimaryContainer, size: 24),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text('World folder', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                Text('World folder', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(worldPath, maxLines: 2, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
@@ -360,7 +370,7 @@ class _WorldHeaderCard extends StatelessWidget {
   }
 }
 
-class _WorldActionTile extends StatelessWidget {
+class _WorldActionTile extends StatefulWidget {
   const _WorldActionTile({
     required this.title,
     required this.subtitle,
@@ -376,32 +386,66 @@ class _WorldActionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_WorldActionTile> createState() => _WorldActionTileState();
+}
+
+class _WorldActionTileState extends State<_WorldActionTile> {
+  double _scale = 1.0;
+
+  @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: enabled ? onTap : null,
-      child: Ink(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: colors.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(icon, color: enabled ? colors.primary : colors.outline, size: 32),
-            const Spacer(),
-            Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-            const SizedBox(height: 4),
-            Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
-          ],
+    return AnimatedScale(
+      scale: _scale,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutBack,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: widget.enabled ? widget.onTap : null,
+        onTapDown: widget.enabled ? (_) => setState(() => _scale = 0.95) : null,
+        onTapUp: widget.enabled ? (_) => setState(() => _scale = 1.0) : null,
+        onTapCancel: () => setState(() => _scale = 1.0),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: widget.enabled
+                      ? colors.primaryContainer
+                      : colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  widget.icon,
+                  color: widget.enabled
+                      ? colors.onPrimaryContainer
+                      : colors.outline,
+                  size: 20,
+                ),
+              ),
+              const Spacer(),
+              Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  String get title => widget.title;
+  String get subtitle => widget.subtitle;
 }
 
 class _WorldMessage extends StatelessWidget {

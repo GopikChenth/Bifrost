@@ -39,6 +39,12 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.5
   shared_preferences: ^2.5.3
+  archive: ^3.6.1
+  google_sign_in: ^6.2.2
+  googleapis: ^13.2.0
+  extension_google_sign_in_as_googleapis_auth: ^2.0.13
+
+
 
 dev_dependencies:
   flutter_test:

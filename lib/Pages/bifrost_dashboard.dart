@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_card.dart';
@@ -14,14 +16,24 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   late final ServerManagerService _serverManager;
+  late final AnimationController _staggerController;
 
   @override
   void initState() {
     super.initState();
+    _staggerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _serverManager = ServerManagerService()..addListener(_refresh);
-    _serverManager.loadStoredServers();
+    _serverManager.loadStoredServers().then((_) {
+      if (mounted) {
+        _staggerController.forward();
+      }
+    });
   }
 
   void _refresh() {
@@ -83,13 +95,26 @@ class _HomePageState extends State<HomePage> {
     final bool? shouldDelete = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
+        final ColorScheme colors = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
+          icon: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: colors.errorContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.delete_forever_rounded,
+              color: colors.onErrorContainer,
+            ),
+          ),
           title: const Text('Delete Server'),
           content: Text(
             'Delete ${server.name}? This removes the server card and its local files.',
           ),
           actions: <Widget>[
-            TextButton(
+            OutlinedButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop(false);
               },
@@ -99,6 +124,10 @@ class _HomePageState extends State<HomePage> {
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.error,
+                foregroundColor: colors.onError,
+              ),
               child: const Text('Delete'),
             ),
           ],
@@ -162,6 +191,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _staggerController.dispose();
     _serverManager
       ..removeListener(_refresh)
       ..dispose();
@@ -170,78 +200,219 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> content = <Widget>[
-      if (_serverManager.isCreatingServer)
-        ServerDownloadCard(
-          serverName:
-              _serverManager.activeDownloadServerName ??
-              'Preparing server files...',
-          fileName: _serverManager.activeDownloadFileName,
-          progress: _serverManager.downloadProgress,
-          progressLabel: _serverManager.totalDownloadBytes == null
-              ? _formatBytes(_serverManager.downloadedBytes)
-              : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
-        ),
-      if (_serverManager.isCreatingServer && _serverManager.servers.isNotEmpty)
-        const SizedBox(height: 12),
-      ..._serverManager.servers.map((BifrostServer server) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: ServerCard(
-            name: server.name,
-            version: server.version,
-            serverType: server.type,
-            statusLabel: server.status,
-            memoryLabel: server.memoryLabel,
-            serverPath: server.path,
-            isOnline: server.isOnline,
-            isBusy: _serverManager.isCreatingServer || server.isBusy,
-            consoleLabel: server.consoleLabel,
-            runtimeMessage: server.runtimeMessage,
-            onStartServer: _serverManager.isCreatingServer
-                ? null
-                : () {
-                    _startServer(server);
-                  },
-            onStopServer: _serverManager.isCreatingServer
-                ? null
-                : () {
-                    _serverManager.stopServer(server);
-                  },
-            onDelete: _serverManager.isCreatingServer
-                ? null
-                : () {
-                    _deleteServer(server);
-                  },
-            onOpenDashboard: () {
-              _openServerPage(server);
-            },
-          ),
-        );
-      }),
-    ];
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bifrost Servers'),
-        actions: <Widget>[
-          IconButton(
-            onPressed: _openSettingsPage,
-            icon: const Icon(Icons.settings_rounded),
-            tooltip: 'Settings',
-          ),
-        ],
-      ),
       body: _serverManager.isLoadingServers
           ? const Center(child: CircularProgressIndicator())
-          : content.isEmpty
-          ? const Center(child: Text('No servers found yet.'))
-          : ListView(padding: const EdgeInsets.all(16), children: content),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _serverManager.isCreatingServer
-            ? null
-            : _openAddServerWindow,
-        child: const Icon(Icons.add),
+          : CustomScrollView(
+              slivers: <Widget>[
+                // ── Hero AppBar ─────────────────────────────────
+                SliverAppBar(
+                  pinned: false,
+                  floating: true,
+                  title: Text(
+                    'Bifrost',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: colors.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: <Color>[
+                            colors.primaryContainer.withValues(alpha: 0.4),
+                            colors.surface,
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ),
+                  actions: <Widget>[
+                    IconButton(
+                      onPressed: _openSettingsPage,
+                      icon: const Icon(Icons.settings_rounded),
+                      tooltip: 'Settings',
+                    ),
+                  ],
+                ),
+
+                // ── Content ─────────────────────────────────────
+                if (_serverManager.servers.isEmpty &&
+                    !_serverManager.isCreatingServer)
+                  SliverFillRemaining(
+                    child: _EmptyState(colors: colors, theme: theme),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    sliver: SliverList.list(
+                      children: <Widget>[
+                        // Download card
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          transitionBuilder: (Widget child,
+                              Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SizeTransition(
+                                sizeFactor: animation,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _serverManager.isCreatingServer
+                              ? Padding(
+                                  key: const ValueKey<String>('download'),
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: ServerDownloadCard(
+                                    serverName:
+                                        _serverManager.activeDownloadServerName ??
+                                            'Preparing server files...',
+                                    fileName:
+                                        _serverManager.activeDownloadFileName,
+                                    progress: _serverManager.downloadProgress,
+                                    progressLabel:
+                                        _serverManager.totalDownloadBytes ==
+                                                null
+                                            ? _formatBytes(
+                                                _serverManager.downloadedBytes)
+                                            : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
+                                  ),
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey<String>('no-download')),
+                        ),
+
+                        // Server cards with stagger
+                        ..._serverManager.servers.asMap().entries.map(
+                              (MapEntry<int, BifrostServer> entry) {
+                            final int index = entry.key;
+                            final BifrostServer server = entry.value;
+                            final int count = _serverManager.servers.length;
+                            final double start = math.min(
+                                index / math.max(count, 1), 0.8);
+                            final double end = math.min(start + 0.4, 1.0);
+
+                            return AnimatedBuilder(
+                              animation: _staggerController,
+                              builder: (BuildContext context, Widget? child) {
+                                final double t = Interval(
+                                  start,
+                                  end,
+                                  curve: Curves.easeOutCubic,
+                                ).transform(_staggerController.value);
+                                return Opacity(
+                                  opacity: t,
+                                  child: Transform.translate(
+                                    offset: Offset(0, 30 * (1 - t)),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: ServerCard(
+                                  name: server.name,
+                                  version: server.version,
+                                  serverType: server.type,
+                                  statusLabel: server.status,
+                                  memoryLabel: server.memoryLabel,
+                                  serverPath: server.path,
+                                  isOnline: server.isOnline,
+                                  isBusy: _serverManager.isCreatingServer ||
+                                      server.isBusy,
+                                  consoleLabel: server.consoleLabel,
+                                  runtimeMessage: server.runtimeMessage,
+                                  onStartServer:
+                                      _serverManager.isCreatingServer
+                                          ? null
+                                          : () {
+                                              _startServer(server);
+                                            },
+                                  onStopServer: _serverManager.isCreatingServer
+                                      ? null
+                                      : () {
+                                          _serverManager.stopServer(server);
+                                        },
+                                  onDelete: _serverManager.isCreatingServer
+                                      ? null
+                                      : () {
+                                          _deleteServer(server);
+                                        },
+                                  onOpenDashboard: () {
+                                    _openServerPage(server);
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed:
+            _serverManager.isCreatingServer ? null : _openAddServerWindow,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('New Server'),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.colors, required this.theme});
+
+  final ColorScheme colors;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.dns_rounded,
+                size: 40,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No servers yet',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap the button below to create your first Minecraft server.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

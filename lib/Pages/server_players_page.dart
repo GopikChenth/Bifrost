@@ -360,6 +360,7 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
         server: server,
+        selectedIndex: ServerDrawerIndex.players,
         onOpenDashboard: () {
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacement(
@@ -447,10 +448,16 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
           : ListView(
               padding: const EdgeInsets.all(12),
               children: <Widget>[
-                if (_message != null) ...<Widget>[
-                  _MessagePanel(message: _message!),
-                  const SizedBox(height: 10),
-                ],
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _message != null
+                      ? Padding(
+                          key: ValueKey<String>(_message!),
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _MessagePanel(message: _message!),
+                        )
+                      : const SizedBox.shrink(key: ValueKey<String>('no-msg')),
+                ),
                 _AccessSectionGrid(
                   whitelistCount: _lists['whitelist']?.length ?? 0,
                   opCount: _lists['ops']?.length ?? 0,
@@ -600,7 +607,7 @@ class _AccessSectionGrid extends StatelessWidget {
   }
 }
 
-class _AccessSectionTile extends StatelessWidget {
+class _AccessSectionTile extends StatefulWidget {
   const _AccessSectionTile({
     required this.mode,
     required this.count,
@@ -612,47 +619,70 @@ class _AccessSectionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_AccessSectionTile> createState() => _AccessSectionTileState();
+}
+
+class _AccessSectionTileState extends State<_AccessSectionTile> {
+  double _scale = 1.0;
+
+  @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: colors.outlineVariant),
-        ),
-        child: Row(
-          children: <Widget>[
-            Icon(mode.icon, color: colors.primary, size: 28),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    mode.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    '$count entries',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+    return AnimatedScale(
+      scale: _scale,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutBack,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _scale = 0.95),
+        onTapUp: (_) => setState(() => _scale = 1.0),
+        onTapCancel: () => setState(() => _scale = 1.0),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(widget.mode.icon, color: colors.onPrimaryContainer, size: 20),
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      widget.mode.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      '${widget.count} entries',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );

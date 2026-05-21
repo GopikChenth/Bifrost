@@ -21,7 +21,8 @@ class ServerSettingsPage extends StatefulWidget {
   State<ServerSettingsPage> createState() => _ServerSettingsPageState();
 }
 
-class _ServerSettingsPageState extends State<ServerSettingsPage> {
+class _ServerSettingsPageState extends State<ServerSettingsPage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _slotsController = TextEditingController();
   final TextEditingController _resourcePackController = TextEditingController();
   final TextEditingController _spawnProtectionController =
@@ -38,9 +39,15 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
   String _gamemode = 'survival';
   String? _errorMessage;
 
+  late final AnimationController _entranceController;
+
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
     widget.serverManager.addListener(_refresh);
     _loadSettings();
   }
@@ -101,6 +108,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
         _isLoading = false;
         _errorMessage = null;
       });
+      _entranceController.forward();
     } catch (error) {
       if (!mounted) {
         return;
@@ -187,6 +195,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
 
   @override
   void dispose() {
+    _entranceController.dispose();
     _slotsController.dispose();
     _resourcePackController.dispose();
     _spawnProtectionController.dispose();
@@ -213,6 +222,7 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
         server: server,
+        selectedIndex: ServerDrawerIndex.settings,
         onOpenDashboard: () {
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacement(
@@ -277,6 +287,20 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
         ),
         title: Text('${server.name} Settings'),
         actions: <Widget>[
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _isSaving
+                ? const Padding(
+                    key: ValueKey<String>('saving'),
+                    padding: EdgeInsets.only(right: 16),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey<String>('idle')),
+          ),
           Builder(
             builder: (BuildContext context) {
               return IconButton(
@@ -290,263 +314,278 @@ class _ServerSettingsPageState extends State<ServerSettingsPage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : FadeTransition(
+              opacity: _entranceController,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.05),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: _entranceController,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: ListView(
+                  padding: const EdgeInsets.all(12),
                   children: <Widget>[
-                    Icon(Icons.security_rounded, color: colors.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Authentication',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: colors.primaryContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.security_rounded,
+                                    color: colors.onPrimaryContainer,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Server Properties',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            _SettingsSwitch(
+                              title: 'Online Mode',
+                              subtitle: _onlineMode
+                                  ? 'Mojang/Microsoft verification enabled.'
+                                  : 'Local/offline usernames can join.',
+                              value: _onlineMode,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (bool value) {
+                                      _setProperty(
+                                        server: server,
+                                        key: 'online-mode',
+                                        value: value ? 'true' : 'false',
+                                        applyLocalValue: () {
+                                          _onlineMode = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsTextField(
+                              label: 'Slots',
+                              helper: 'Writes max-players.',
+                              controller: _slotsController,
+                              keyboardType: TextInputType.number,
+                              onSave: _isSaving
+                                  ? null
+                                  : () {
+                                      _saveTextProperty(
+                                        server: server,
+                                        key: 'max-players',
+                                        controller: _slotsController,
+                                        fallback: '20',
+                                      );
+                                    },
+                            ),
+                            _SettingsDropdown(
+                              label: 'Difficulty',
+                              value: _difficulty,
+                              values: const <String>[
+                                'peaceful',
+                                'easy',
+                                'normal',
+                                'hard',
+                              ],
+                              onChanged: _isSaving
+                                  ? null
+                                  : (String? value) {
+                                      if (value == null) {
+                                        return;
+                                      }
+                                      _setProperty(
+                                        server: server,
+                                        key: 'difficulty',
+                                        value: value,
+                                        applyLocalValue: () {
+                                          _difficulty = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsDropdown(
+                              label: 'Gamemode',
+                              value: _gamemode,
+                              values: const <String>[
+                                'survival',
+                                'creative',
+                                'adventure',
+                                'spectator',
+                              ],
+                              onChanged: _isSaving
+                                  ? null
+                                  : (String? value) {
+                                      if (value == null) {
+                                        return;
+                                      }
+                                      _setProperty(
+                                        server: server,
+                                        key: 'gamemode',
+                                        value: value,
+                                        applyLocalValue: () {
+                                          _gamemode = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsSwitch(
+                              title: 'Force Gamemode',
+                              subtitle:
+                                  'Forces players into the configured gamemode.',
+                              value: _forceGamemode,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (bool value) {
+                                      _setProperty(
+                                        server: server,
+                                        key: 'force-gamemode',
+                                        value: value ? 'true' : 'false',
+                                        applyLocalValue: () {
+                                          _forceGamemode = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsSwitch(
+                              title: 'Whitelist',
+                              subtitle: 'Only whitelisted players can join.',
+                              value: _whitelist,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (bool value) {
+                                      _setProperty(
+                                        server: server,
+                                        key: 'white-list',
+                                        value: value ? 'true' : 'false',
+                                        applyLocalValue: () {
+                                          _whitelist = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsSwitch(
+                              title: 'Fly',
+                              subtitle:
+                                  'Allows flight if the client/mod supports it.',
+                              value: _allowFlight,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (bool value) {
+                                      _setProperty(
+                                        server: server,
+                                        key: 'allow-flight',
+                                        value: value ? 'true' : 'false',
+                                        applyLocalValue: () {
+                                          _allowFlight = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsTextField(
+                              label: 'Spawn Protection',
+                              helper: 'Blocks protected around world spawn.',
+                              controller: _spawnProtectionController,
+                              keyboardType: TextInputType.number,
+                              onSave: _isSaving
+                                  ? null
+                                  : () {
+                                      _saveTextProperty(
+                                        server: server,
+                                        key: 'spawn-protection',
+                                        controller: _spawnProtectionController,
+                                        fallback: '16',
+                                      );
+                                    },
+                            ),
+                            _SettingsSwitch(
+                              title: 'Resource Pack Required',
+                              subtitle:
+                                  'Players must accept the configured pack.',
+                              value: _resourcePackRequired,
+                              onChanged: _isSaving
+                                  ? null
+                                  : (bool value) {
+                                      _setProperty(
+                                        server: server,
+                                        key: 'require-resource-pack',
+                                        value: value ? 'true' : 'false',
+                                        applyLocalValue: () {
+                                          _resourcePackRequired = value;
+                                        },
+                                      );
+                                    },
+                            ),
+                            _SettingsTextField(
+                              label: 'Resource Pack',
+                              helper: 'Direct URL for the server resource pack.',
+                              controller: _resourcePackController,
+                              keyboardType: TextInputType.url,
+                              onSave: _isSaving
+                                  ? null
+                                  : () {
+                                      _saveTextProperty(
+                                        server: server,
+                                        key: 'resource-pack',
+                                        controller: _resourcePackController,
+                                        fallback: '',
+                                      );
+                                    },
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'These controls write to server.properties. Restart the server after changing settings.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    if (_isSaving)
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: _errorMessage != null
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  _errorMessage!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                if (_isLoading)
-                  const Center(child: CircularProgressIndicator())
-                else
-                  Column(
-                    children: <Widget>[
-                      _SettingsSwitch(
-                        title: 'Online Mode',
-                        subtitle: _onlineMode
-                            ? 'Mojang/Microsoft username verification is enabled.'
-                            : 'Local/offline usernames can join this server.',
-                        value: _onlineMode,
-                        onChanged: _isSaving
-                            ? null
-                            : (bool value) {
-                                _setProperty(
-                                  server: server,
-                                  key: 'online-mode',
-                                  value: value ? 'true' : 'false',
-                                  applyLocalValue: () {
-                                    _onlineMode = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsTextField(
-                        label: 'Slots',
-                        helper: 'Writes max-players.',
-                        controller: _slotsController,
-                        keyboardType: TextInputType.number,
-                        onSave: _isSaving
-                            ? null
-                            : () {
-                                _saveTextProperty(
-                                  server: server,
-                                  key: 'max-players',
-                                  controller: _slotsController,
-                                  fallback: '20',
-                                );
-                              },
-                      ),
-                      _SettingsDropdown(
-                        label: 'Difficulty',
-                        value: _difficulty,
-                        values: const <String>[
-                          'peaceful',
-                          'easy',
-                          'normal',
-                          'hard',
-                        ],
-                        onChanged: _isSaving
-                            ? null
-                            : (String? value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                _setProperty(
-                                  server: server,
-                                  key: 'difficulty',
-                                  value: value,
-                                  applyLocalValue: () {
-                                    _difficulty = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsDropdown(
-                        label: 'Gamemode',
-                        value: _gamemode,
-                        values: const <String>[
-                          'survival',
-                          'creative',
-                          'adventure',
-                          'spectator',
-                        ],
-                        onChanged: _isSaving
-                            ? null
-                            : (String? value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                _setProperty(
-                                  server: server,
-                                  key: 'gamemode',
-                                  value: value,
-                                  applyLocalValue: () {
-                                    _gamemode = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsSwitch(
-                        title: 'Force Gamemode',
-                        subtitle:
-                            'Forces players into the configured gamemode.',
-                        value: _forceGamemode,
-                        onChanged: _isSaving
-                            ? null
-                            : (bool value) {
-                                _setProperty(
-                                  server: server,
-                                  key: 'force-gamemode',
-                                  value: value ? 'true' : 'false',
-                                  applyLocalValue: () {
-                                    _forceGamemode = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsSwitch(
-                        title: 'Whitelist',
-                        subtitle: 'Only whitelisted players can join.',
-                        value: _whitelist,
-                        onChanged: _isSaving
-                            ? null
-                            : (bool value) {
-                                _setProperty(
-                                  server: server,
-                                  key: 'white-list',
-                                  value: value ? 'true' : 'false',
-                                  applyLocalValue: () {
-                                    _whitelist = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsSwitch(
-                        title: 'Fly',
-                        subtitle:
-                            'Allows flight if the client/mod supports it.',
-                        value: _allowFlight,
-                        onChanged: _isSaving
-                            ? null
-                            : (bool value) {
-                                _setProperty(
-                                  server: server,
-                                  key: 'allow-flight',
-                                  value: value ? 'true' : 'false',
-                                  applyLocalValue: () {
-                                    _allowFlight = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsTextField(
-                        label: 'Spawn Protection',
-                        helper: 'Blocks protected around world spawn.',
-                        controller: _spawnProtectionController,
-                        keyboardType: TextInputType.number,
-                        onSave: _isSaving
-                            ? null
-                            : () {
-                                _saveTextProperty(
-                                  server: server,
-                                  key: 'spawn-protection',
-                                  controller: _spawnProtectionController,
-                                  fallback: '16',
-                                );
-                              },
-                      ),
-                      _SettingsSwitch(
-                        title: 'Resource Pack Required',
-                        subtitle: 'Players must accept the configured pack.',
-                        value: _resourcePackRequired,
-                        onChanged: _isSaving
-                            ? null
-                            : (bool value) {
-                                _setProperty(
-                                  server: server,
-                                  key: 'require-resource-pack',
-                                  value: value ? 'true' : 'false',
-                                  applyLocalValue: () {
-                                    _resourcePackRequired = value;
-                                  },
-                                );
-                              },
-                      ),
-                      _SettingsTextField(
-                        label: 'Resource Pack',
-                        helper: 'Direct URL for the server resource pack.',
-                        controller: _resourcePackController,
-                        keyboardType: TextInputType.url,
-                        onSave: _isSaving
-                            ? null
-                            : () {
-                                _saveTextProperty(
-                                  server: server,
-                                  key: 'resource-pack',
-                                  controller: _resourcePackController,
-                                  fallback: '',
-                                );
-                              },
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 8),
-                Text(
-                  'These controls write to server.properties. Restart the server after changing settings.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_errorMessage != null) ...<Widget>[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                _errorMessage!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
               ),
             ),
-          ],
-        ],
-      ),
     );
   }
 }
@@ -602,7 +641,6 @@ class _SettingsDropdown extends StatelessWidget {
         onChanged: onChanged,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
         ),
       ),
     );
@@ -634,7 +672,6 @@ class _SettingsTextField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           helperText: helper,
-          border: const OutlineInputBorder(),
           suffixIcon: IconButton(
             onPressed: onSave,
             icon: const Icon(Icons.save_rounded),
