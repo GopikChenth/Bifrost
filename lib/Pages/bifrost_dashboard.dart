@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bifrost/Components/add_server_window.dart';
+import 'package:bifrost/Components/bifrost_container_transform.dart';
 import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_card.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
@@ -24,6 +25,7 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
+    AddServerWindow.preloadDeviceInfo();
     _staggerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -69,27 +71,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Future<void> _openAddServerWindow() async {
-    final AddServerResult? newServer = await showDialog<AddServerResult>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return const AddServerWindow();
-      },
-    );
-
-    if (newServer == null || !mounted) {
-      return;
-    }
-
-    final String? message = await _serverManager.createServer(newServer);
-    if (!mounted || message == null) {
-      return;
-    }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
+  // Morph transition is now handled by BifrostContainerTransform directly on the FAB.
 
   Future<void> _deleteServer(BifrostServer server) async {
     final bool? shouldDelete = await showDialog<bool>(
@@ -360,12 +342,52 @@ class _HomePageState extends State<HomePage>
                   ),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed:
-            _serverManager.isCreatingServer ? null : _openAddServerWindow,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Server'),
-      ),
+      floatingActionButton: _serverManager.isCreatingServer
+          ? null
+          : BifrostContainerTransform<AddServerResult>(
+              onClosed: (AddServerResult? newServer) async {
+                if (newServer == null) {
+                  return;
+                }
+                if (!context.mounted) {
+                  return;
+                }
+
+                final String? message = await _serverManager.createServer(newServer);
+                if (!context.mounted) {
+                  return;
+                }
+                if (message == null) {
+                  return;
+                }
+
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(message)));
+              },
+              closedBuilder: (BuildContext context, VoidCallback openContainer) {
+                return FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: openContainer,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('New Server'),
+                );
+              },
+              openBuilder: (BuildContext context, VoidCallback closeContainer) {
+                return const AddServerWindow();
+              },
+              openMockBuilder: (BuildContext context) {
+                return const AddServerFlightShuttleMock();
+              },
+              openLayoutWrapper: (BuildContext context, Widget child) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    child: child,
+                  ),
+                );
+              },
+            ),
     );
   }
 }
