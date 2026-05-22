@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:bifrost/Pages/bifrost_dashboard.dart';
+import 'package:bifrost/Utils/app_colors.dart';
 
 void main() {
   runApp(const BifrostApp());
@@ -10,9 +11,34 @@ class BifrostApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF00838F),
+    final ColorScheme colorScheme = ColorScheme(
       brightness: Brightness.dark,
+      primary: AppColors.primary,
+      onPrimary: AppColors.textPrimary,
+      primaryContainer: AppColors.primaryLight,
+      onPrimaryContainer: AppColors.backgroundDark,
+      secondary: AppColors.primaryLight,
+      onSecondary: AppColors.backgroundDark,
+      secondaryContainer: AppColors.primaryDark,
+      onSecondaryContainer: AppColors.textPrimary,
+      surface: AppColors.surface,
+      onSurface: AppColors.textPrimary,
+      onSurfaceVariant: AppColors.textSecondary,
+      outline: AppColors.border,
+      outlineVariant: AppColors.border,
+      error: const Color(0xFFE97152),
+      onError: AppColors.textPrimary,
+      errorContainer: const Color(0xFF351C18),
+      onErrorContainer: const Color(0xFFE97152),
+      tertiary: AppColors.accent,
+      onTertiary: AppColors.backgroundDark,
+      tertiaryContainer: AppColors.accent.withValues(alpha: 0.2),
+      onTertiaryContainer: AppColors.accent,
+      surfaceContainerLowest: AppColors.backgroundDark,
+      surfaceContainerLow: AppColors.surface,
+      surfaceContainer: AppColors.surface,
+      surfaceContainerHigh: AppColors.surface,
+      surfaceContainerHighest: AppColors.border,
     );
 
     return MaterialApp(
@@ -23,6 +49,7 @@ class BifrostApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: colorScheme,
+        scaffoldBackgroundColor: AppColors.backgroundDark,
 
         // ── Page transitions ────────────────────────────────────
         pageTransitionsTheme: PageTransitionsTheme(

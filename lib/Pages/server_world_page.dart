@@ -400,44 +400,46 @@ class _WorldActionTileState extends State<_WorldActionTile> {
       scale: _scale,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutBack,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: widget.enabled ? widget.onTap : null,
-        onTapDown: widget.enabled ? (_) => setState(() => _scale = 0.95) : null,
-        onTapUp: widget.enabled ? (_) => setState(() => _scale = 1.0) : null,
-        onTapCancel: () => setState(() => _scale = 1.0),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: colors.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: widget.enabled
-                      ? colors.primaryContainer
-                      : colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
+      child: Material(
+        color: colors.surfaceContainerLow,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(color: colors.outlineVariant),
+        ),
+        child: InkWell(
+          onTap: widget.enabled ? widget.onTap : null,
+          onTapDown: widget.enabled ? (_) => setState(() => _scale = 0.95) : null,
+          onTapUp: widget.enabled ? (_) => setState(() => _scale = 1.0) : null,
+          onTapCancel: () => setState(() => _scale = 1.0),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: widget.enabled
+                        ? colors.primaryContainer
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    color: widget.enabled
+                        ? colors.onPrimaryContainer
+                        : colors.outline,
+                    size: 20,
+                  ),
                 ),
-                child: Icon(
-                  widget.icon,
-                  color: widget.enabled
-                      ? colors.onPrimaryContainer
-                      : colors.outline,
-                  size: 20,
-                ),
-              ),
-              const Spacer(),
-              Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 2),
-              Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
-            ],
+                const Spacer(),
+                Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+              ],
+            ),
           ),
         ),
       ),

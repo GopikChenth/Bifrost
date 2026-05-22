@@ -243,7 +243,7 @@ class ServerManagerService extends ChangeNotifier {
               downloadedBytes = receivedBytes;
               totalDownloadBytes = totalBytes;
               final DateTime now = DateTime.now();
-              if (now.difference(_lastProgressNotify).inMilliseconds > 250) {
+              if (now.difference(_lastProgressNotify).inMilliseconds > 16) {
                 _lastProgressNotify = now;
                 notifyListeners();
               }
@@ -270,7 +270,7 @@ class ServerManagerService extends ChangeNotifier {
             downloadedBytes = receivedBytes;
             totalDownloadBytes = totalBytes;
             final DateTime now = DateTime.now();
-            if (now.difference(_lastProgressNotify).inMilliseconds > 250) {
+            if (now.difference(_lastProgressNotify).inMilliseconds > 16) {
               _lastProgressNotify = now;
               notifyListeners();
             }

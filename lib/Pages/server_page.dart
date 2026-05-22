@@ -505,14 +505,7 @@ class _HeroPanel extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: <Color>[
-                colors.primaryContainer,
-                colors.tertiaryContainer,
-              ],
-              begin: Alignment(-1.0 + value * 0.4, -1.0),
-              end: Alignment(1.0 - value * 0.4, 1.0),
-            ),
+            color: colors.primaryContainer,
             borderRadius: BorderRadius.circular(28),
           ),
           child: child,

@@ -74,14 +74,7 @@ class ServerNavigationDrawer extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: <Color>[
-                      colors.primaryContainer,
-                      colors.tertiaryContainer,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: colors.primaryContainer,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(

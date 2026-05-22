@@ -202,20 +202,6 @@ class _HomePageState extends State<HomePage>
                       letterSpacing: -0.5,
                     ),
                   ),
-                  flexibleSpace: FlexibleSpaceBar(
-                    background: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: <Color>[
-                            colors.primaryContainer.withValues(alpha: 0.4),
-                            colors.surface,
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                    ),
-                  ),
                   actions: <Widget>[
                     IconButton(
                       onPressed: _openSettingsPage,
