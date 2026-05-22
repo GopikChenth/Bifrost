@@ -249,16 +249,22 @@ class BifrostFlightShuttle extends StatelessWidget {
         // Custom curve representing toned-down Material Expressive physics
         const Curve expressiveCurve = Cubic(0.34, 1.15, 0.64, 1.00);
         final double shapeT = expressiveCurve.transform(t);
-        final double colorT = expressiveCurve.transform(t);
+        final double colorT = Curves.easeOutCubic.transform(t);
 
-        // Interpolate background color
-        final Color backgroundColor = Color.lerp(closedColor, openColor, colorT) ?? openColor;
+        // Interpolate background color - swap start/end colors based on transition direction
+        final Color startColor = isPush ? closedColor : openColor;
+        final Color endColor = isPush ? openColor : closedColor;
+        final Color backgroundColor = Color.lerp(startColor, endColor, colorT) ?? endColor;
 
-        // Interpolate border radius
-        final double borderRadius = closedRadius + (openRadius - closedRadius) * shapeT;
+        // Interpolate border radius - swap start/end radius based on transition direction
+        final double startRadius = isPush ? closedRadius : openRadius;
+        final double endRadius = isPush ? openRadius : closedRadius;
+        final double borderRadius = startRadius + (endRadius - startRadius) * shapeT;
 
-        // Interpolate elevation
-        final double elevation = closedElevation + (openElevation - closedElevation) * shapeT;
+        // Interpolate elevation - swap start/end elevation based on transition direction
+        final double startElevation = isPush ? closedElevation : openElevation;
+        final double endElevation = isPush ? openElevation : closedElevation;
+        final double elevation = startElevation + (endElevation - startElevation) * shapeT;
 
         // Cross-fade the children based on size progress (animation.value)
         final double sizeVal = animation.value;
