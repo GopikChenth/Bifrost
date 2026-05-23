@@ -370,23 +370,43 @@ class MainActivity : FlutterActivity() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val isOngoing = status.equals("running", ignoreCase = true) ||
-                        status.equals("starting", ignoreCase = true) ||
-                        status.equals("stopping", ignoreCase = true)
+        val isStarting = status.equals("starting", ignoreCase = true)
+        val isStopping = status.equals("stopping", ignoreCase = true)
+        val isRunning = status.equals("running", ignoreCase = true)
+        val isStartingOrStopping = isStarting || isStopping
+        val isOngoing = isRunning || isStartingOrStopping
+
+        val buttonText = when {
+            isStarting -> "Starting"
+            isStopping -> "Stopping"
+            isRunning -> "Stop"
+            else -> "Start"
+        }
+
+        val backgroundRes = when {
+            isStartingOrStopping -> R.drawable.notification_button_disabled
+            isRunning -> R.drawable.notification_button_stop
+            else -> R.drawable.notification_button_start
+        }
 
         val remoteViews = RemoteViews(packageName, R.layout.notification_custom).apply {
             setTextViewText(R.id.txt_title, "Server: $name")
             setTextViewText(R.id.txt_subtitle, "$type $version • $status")
-            setTextViewText(R.id.btn_action, if (isOngoing) "Stop" else "Start")
-            setInt(
-                R.id.btn_action,
-                "setBackgroundResource",
-                if (isOngoing) R.drawable.notification_button_stop else R.drawable.notification_button_start
-            )
-            setOnClickPendingIntent(
-                R.id.btn_action,
-                if (isOngoing) stopPendingIntent else startPendingIntent
-            )
+            setTextViewText(R.id.btn_action, buttonText)
+            setInt(R.id.btn_action, "setBackgroundResource", backgroundRes)
+
+            setBoolean(R.id.btn_action, "setEnabled", !isStartingOrStopping)
+            setBoolean(R.id.btn_action, "setClickable", !isStartingOrStopping)
+            setBoolean(R.id.btn_action, "setFocusable", !isStartingOrStopping)
+
+            if (isStartingOrStopping) {
+                setOnClickPendingIntent(R.id.btn_action, null)
+            } else {
+                setOnClickPendingIntent(
+                    R.id.btn_action,
+                    if (isRunning) stopPendingIntent else startPendingIntent
+                )
+            }
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
