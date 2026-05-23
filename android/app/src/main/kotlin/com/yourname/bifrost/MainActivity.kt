@@ -17,6 +17,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import android.widget.RemoteViews
+import android.graphics.Color
 
 class MainActivity : FlutterActivity() {
     private val localRuntimeManager: LocalRuntimeManager by lazy {
@@ -394,10 +395,10 @@ class MainActivity : FlutterActivity() {
             setTextViewText(R.id.txt_subtitle, "$type $version • $status")
             setTextViewText(R.id.btn_action, buttonText)
             setInt(R.id.btn_action, "setBackgroundResource", backgroundRes)
-
-            setBoolean(R.id.btn_action, "setEnabled", !isStartingOrStopping)
-            setBoolean(R.id.btn_action, "setClickable", !isStartingOrStopping)
-            setBoolean(R.id.btn_action, "setFocusable", !isStartingOrStopping)
+            setTextColor(
+                R.id.btn_action,
+                if (isStartingOrStopping) Color.parseColor("#B7B7B7") else Color.parseColor("#FFFFFF")
+            )
 
             if (isStartingOrStopping) {
                 setOnClickPendingIntent(R.id.btn_action, null)
