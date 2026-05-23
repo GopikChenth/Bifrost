@@ -135,4 +135,50 @@ class LocalRuntimeService {
       );
     }
   }
+
+  Future<void> updateNotification({
+    required String name,
+    required String type,
+    required String version,
+    required String status,
+  }) async {
+    try {
+      await _channel.invokeMethod('updateNotification', <String, Object?>{
+        'name': name,
+        'type': type,
+        'version': version,
+        'status': status,
+      });
+    } on PlatformException catch (error) {
+      throw LocalRuntimeServiceException(
+        error.message ?? 'Unable to update the server notification.',
+      );
+    }
+  }
+
+  Future<void> cancelNotification() async {
+    try {
+      await _channel.invokeMethod('cancelNotification');
+    } on PlatformException catch (error) {
+      throw LocalRuntimeServiceException(
+        error.message ?? 'Unable to cancel the server notification.',
+      );
+    }
+  }
+
+  void setNotificationCallback({
+    required Function() onStart,
+    required Function() onStop,
+  }) {
+    _channel.setMethodCallHandler((MethodCall call) async {
+      switch (call.method) {
+        case 'startServerFromNotification':
+          onStart();
+          break;
+        case 'stopServerFromNotification':
+          onStop();
+          break;
+      }
+    });
+  }
 }

@@ -18,7 +18,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 
 class ServerManagerService extends ChangeNotifier {
-  ServerManagerService({
+  static final ServerManagerService _instance = ServerManagerService._internal();
+
+  factory ServerManagerService() {
+    return _instance;
+  }
+
+  ServerManagerService._internal({
     OfficialServerDownloadService officialServerDownloadService =
         const OfficialServerDownloadService(),
     PaperJarService paperJarService = const PaperJarService(),
@@ -27,7 +33,28 @@ class ServerManagerService extends ChangeNotifier {
   }) : _officialServerDownloadService = officialServerDownloadService,
        _paperJarService = paperJarService,
        _serverStorageService = serverStorageService,
-       _localRuntimeService = localRuntimeService;
+       _localRuntimeService = localRuntimeService {
+    _localRuntimeService.setNotificationCallback(
+      onStart: () {
+        if (_lastStartedServerPath != null) {
+          final BifrostServer? server = serverByPath(_lastStartedServerPath!);
+          if (server != null) {
+            startServer(server);
+          }
+        }
+      },
+      onStop: () {
+        if (_lastStartedServerPath != null) {
+          final BifrostServer? server = serverByPath(_lastStartedServerPath!);
+          if (server != null) {
+            stopServer(server);
+          }
+        }
+      },
+    );
+  }
+
+  static bool enableAndroidNotificationForTesting = false;
 
   final OfficialServerDownloadService _officialServerDownloadService;
   final PaperJarService _paperJarService;
@@ -46,6 +73,32 @@ class ServerManagerService extends ChangeNotifier {
   final Map<String, DateTime?> _lastSyncTimeByServerPath = <String, DateTime?>{};
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+
+  String? _lastStartedServerPath;
+  String? get lastStartedServerPath => _lastStartedServerPath;
+
+  Future<void> _loadLastStartedServerPath() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _lastStartedServerPath = prefs.getString('last_started_server_path');
+    notifyListeners();
+  }
+
+  Future<void> _saveLastStartedServerPath(String path) async {
+    _lastStartedServerPath = path;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_started_server_path', path);
+  }
+
+  void _updateNativeNotification(BifrostServer server) {
+    if (Platform.isAndroid || enableAndroidNotificationForTesting) {
+      _localRuntimeService.updateNotification(
+        name: server.name,
+        type: server.type,
+        version: server.version,
+        status: server.status,
+      );
+    }
+  }
 
   bool isLoadingServers = true;
 
@@ -116,6 +169,7 @@ class ServerManagerService extends ChangeNotifier {
   }
 
   Future<void> loadStoredServers() async {
+    await _loadLastStartedServerPath();
     try {
       final List<Map<String, Object>> storedServers =
           await _serverStorageService.loadStoredServers();
@@ -284,6 +338,16 @@ class ServerManagerService extends ChangeNotifier {
       if (server.path.trim().isNotEmpty) {
         await _serverStorageService.deleteServerDirectory(server.path);
       }
+      if (_lastStartedServerPath == server.path) {
+        _lastStartedServerPath = null;
+        if (Platform.isAndroid || enableAndroidNotificationForTesting) {
+          try {
+            await _localRuntimeService.cancelNotification();
+          } catch (_) {}
+        }
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_started_server_path');
+      }
       await loadStoredServers();
       return 'Deleted ${server.name}';
     } on ServerStorageException catch (error) {
@@ -351,6 +415,9 @@ class ServerManagerService extends ChangeNotifier {
     if (server.path.trim().isEmpty) {
       return;
     }
+
+    await _saveLastStartedServerPath(server.path);
+    _updateNativeNotification(server);
 
     _updateServer(
       server.path,
@@ -685,14 +752,6 @@ class ServerManagerService extends ChangeNotifier {
     return _runtimeMajorForFeatureVersion(versionParts.featureVersion);
   }
 
-  int _runtimeMajorForVersion(String version) {
-    return _runtimeMajorForFeatureVersion(_minecraftFeatureVersion(version));
-  }
-
-  int _minecraftFeatureVersion(String version) {
-    return _minecraftVersionParts(version).featureVersion;
-  }
-
   static final RegExp _digitPattern = RegExp(r'\d+');
 
   _MinecraftVersionParts _minecraftVersionParts(String version) {
@@ -900,6 +959,9 @@ class ServerManagerService extends ChangeNotifier {
       runtimeMessage: runtimeMessage,
       isBusy: isBusy,
     );
+    if (_lastStartedServerPath == serverPath) {
+      _updateNativeNotification(_servers[index]);
+    }
     notifyListeners();
   }
 
@@ -1023,10 +1085,30 @@ class ServerManagerService extends ChangeNotifier {
     }
   }
 
+  void resetForTesting() {
+    _servers.clear();
+    _consoleOutputByServerPath.clear();
+    _knownPlayersByServerPath.clear();
+    _onlinePlayersByServerPath.clear();
+    _playtimeSecondsByServerPath.clear();
+    _lastSyncTimeByServerPath.clear();
+    isLoadingServers = true;
+    _lastStartedServerPath = null;
+    isCreatingServer = false;
+    _isCreateCancelled = false;
+    activeDownloadServerName = null;
+    activeDownloadFileName = null;
+    downloadedBytes = 0;
+    totalDownloadBytes = null;
+    lastErrorMessage = null;
+  }
+
   @override
+  // ignore: must_call_super
   void dispose() {
     _serverStatusPollTimer?.cancel();
-    super.dispose();
+    // Do not call super.dispose() as this is a global singleton
+    // and must remain usable after pages are disposed.
   }
 }
 
