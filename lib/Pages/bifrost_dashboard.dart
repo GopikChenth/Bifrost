@@ -192,7 +192,7 @@ class _HomePageState extends State<HomePage>
               slivers: <Widget>[
                 // ── Hero AppBar ─────────────────────────────────
                 SliverAppBar(
-                  pinned: false,
+                  pinned: true,
                   floating: true,
                   title: Text(
                     'Bifrost',

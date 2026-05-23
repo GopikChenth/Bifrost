@@ -5,6 +5,7 @@ import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
 import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
 
 class ServerSettingsPage extends StatefulWidget {
@@ -108,7 +109,11 @@ class _ServerSettingsPageState extends State<ServerSettingsPage>
         _isLoading = false;
         _errorMessage = null;
       });
-      _entranceController.forward();
+      if (AppSettings.disableAnimations) {
+        _entranceController.value = 1.0;
+      } else {
+        _entranceController.forward();
+      }
     } catch (error) {
       if (!mounted) {
         return;
