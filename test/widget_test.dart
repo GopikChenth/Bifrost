@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bifrost/main.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -61,5 +62,34 @@ void main() {
     for (int i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+  });
+
+  testWidgets('Disable Animations Test', (WidgetTester tester) async {
+    // Set animations disabled globally
+    AppSettings.disableAnimations = true;
+
+    // Build the app
+    await tester.pumpWidget(const BifrostApp());
+    
+    // Pump a few times to let ServerManagerService load servers
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Verify FAB is present
+    final Finder fabFinder = find.byType(FloatingActionButton);
+    expect(fabFinder, findsOneWidget);
+
+    // Tap the FAB to trigger the push transition
+    await tester.tap(fabFinder);
+    
+    // Since transition duration is Duration.zero, pumping once should render the page builder instantly
+    await tester.pump();
+
+    // Verify dialog is immediately shown
+    expect(find.text('Add Server'), findsOneWidget);
+
+    // Reset animations setting
+    AppSettings.disableAnimations = false;
   });
 }

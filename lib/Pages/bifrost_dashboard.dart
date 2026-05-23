@@ -8,6 +8,7 @@ import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/bifrost_setting_spage.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
 
 class HomePage extends StatefulWidget {
@@ -33,7 +34,11 @@ class _HomePageState extends State<HomePage>
     _serverManager = ServerManagerService()..addListener(_refresh);
     _serverManager.loadStoredServers().then((_) {
       if (mounted) {
-        _staggerController.forward();
+        if (AppSettings.disableAnimations) {
+          _staggerController.value = 1.0;
+        } else {
+          _staggerController.forward();
+        }
       }
     });
   }

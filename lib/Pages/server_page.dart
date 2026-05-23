@@ -10,6 +10,7 @@ import 'package:bifrost/Pages/server_terminal_page.dart';
 import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -82,7 +83,11 @@ class _ServerPageState extends State<ServerPage>
     widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _entranceController.forward();
+      if (AppSettings.disableAnimations) {
+        _entranceController.value = 1.0;
+      } else {
+        _entranceController.forward();
+      }
     });
   }
 
@@ -402,52 +407,7 @@ class _ServerPageState extends State<ServerPage>
           _staggeredChild(
             3,
             totalSections,
-            GridView.count(
-              crossAxisCount: MediaQuery.sizeOf(context).width > 640 ? 4 : 2,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 1.85,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: <Widget>[
-                _DashboardMetric(
-                  icon: Icons.dns_rounded,
-                  label: 'Server Type',
-                  value: server.type,
-                ),
-                _DashboardMetric(
-                  icon: Icons.new_releases_rounded,
-                  label: 'Version',
-                  value: server.version,
-                ),
-                const _DashboardMetric(
-                  icon: Icons.groups_rounded,
-                  label: 'Players Online',
-                  value: 'Not tracked',
-                ),
-                _DashboardMetric(
-                  icon: Icons.memory_rounded,
-                  label: 'Allocated RAM',
-                  value: server.memoryLabel,
-                ),
-                const _DashboardMetric(
-                  icon: Icons.speed_rounded,
-                  label: 'RAM Usage',
-                  value: 'Pending',
-                ),
-                _DashboardMetric(
-                  icon: Icons.terminal_rounded,
-                  label: 'Console',
-                  value: server.consoleLabel,
-                ),
-                _DashboardMetric(
-                  icon: Icons.power_settings_new_rounded,
-                  label: 'Runtime State',
-                  value: server.status,
-                ),
-                _DashboardPathMetric(path: server.path),
-              ],
-            ),
+            _ServerDetailsPanel(server: server),
           ),
           const SizedBox(height: 12),
           _staggeredChild(
@@ -640,101 +600,146 @@ class _LocalNetworkPanel extends StatelessWidget {
   }
 }
 
-class _DashboardMetric extends StatelessWidget {
-  const _DashboardMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+class _ServerDetailsPanel extends StatelessWidget {
+  const _ServerDetailsPanel({required this.server});
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final BifrostServer server;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    Widget buildItem(IconData icon, String label, String value) {
+      return Row(
         children: <Widget>[
           Icon(icon, size: 18, color: colors.primary),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 10,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                Text(
+                  value,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
+      );
+    }
 
-class _DashboardPathMetric extends StatelessWidget {
-  const _DashboardPathMetric({required this.path});
-
-  final String path;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
+    final bool isWide = MediaQuery.sizeOf(context).width > 600;
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
-          Icon(Icons.folder_rounded, size: 18, color: colors.primary),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Path',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
+          if (isWide)
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    children: <Widget>[
+                      buildItem(Icons.dns_rounded, 'Server Type', server.type),
+                      const SizedBox(height: 10),
+                      buildItem(Icons.groups_rounded, 'Players Online', 'Not tracked'),
+                      const SizedBox(height: 10),
+                      buildItem(Icons.speed_rounded, 'RAM Usage', 'Pending'),
+                      const SizedBox(height: 10),
+                      buildItem(Icons.power_settings_new_rounded, 'Runtime State', server.status),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                path,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  height: 1.05,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    children: <Widget>[
+                      buildItem(Icons.new_releases_rounded, 'Version', server.version),
+                      const SizedBox(height: 10),
+                      buildItem(Icons.memory_rounded, 'Allocated RAM', server.memoryLabel),
+                      const SizedBox(height: 10),
+                      buildItem(Icons.terminal_rounded, 'Console', server.consoleLabel),
+                      const SizedBox(height: 10),
+                      const SizedBox(height: 28), // Spacer to align bottom row
+                    ],
+                  ),
+                ),
+              ],
+            )
+          else
+            Column(
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(child: buildItem(Icons.dns_rounded, 'Type', server.type)),
+                    const SizedBox(width: 10),
+                    Expanded(child: buildItem(Icons.new_releases_rounded, 'Version', server.version)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(child: buildItem(Icons.groups_rounded, 'Players', 'Not tracked')),
+                    const SizedBox(width: 10),
+                    Expanded(child: buildItem(Icons.memory_rounded, 'Allocated RAM', server.memoryLabel)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(child: buildItem(Icons.speed_rounded, 'RAM Usage', 'Pending')),
+                    const SizedBox(width: 10),
+                    Expanded(child: buildItem(Icons.terminal_rounded, 'Console', server.consoleLabel)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                buildItem(Icons.power_settings_new_rounded, 'Runtime State', server.status),
+              ],
+            ),
+          const Divider(height: 20),
+          Row(
+            children: <Widget>[
+              Icon(Icons.folder_rounded, size: 18, color: colors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Path',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 10,
+                      ),
+                    ),
+                    SelectableText(
+                      server.path,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

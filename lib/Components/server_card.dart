@@ -1,6 +1,7 @@
 import 'package:bifrost/Components/material_expressive_button.dart';
 import 'package:bifrost/Components/wavy_linear_progress_indicator.dart';
 import 'package:bifrost/Services/file_manager_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -106,9 +107,10 @@ class _ServerCardState extends State<ServerCard> {
 
     return AnimatedScale(
       scale: _scale,
-      duration: const Duration(milliseconds: 200),
+      duration: AppSettings.disableAnimations ? Duration.zero : const Duration(milliseconds: 200),
       curve: Curves.easeOutBack,
       child: Card(
+        elevation: 3.0,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.onOpenDashboard,
@@ -359,7 +361,7 @@ class _StatusBadgeState extends State<_StatusBadge>
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.6).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    if (widget.isOnline) {
+    if (widget.isOnline && !AppSettings.disableAnimations) {
       _pulseController.repeat(reverse: true);
     }
   }
@@ -367,9 +369,9 @@ class _StatusBadgeState extends State<_StatusBadge>
   @override
   void didUpdateWidget(_StatusBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isOnline && !_pulseController.isAnimating) {
+    if (widget.isOnline && !AppSettings.disableAnimations && !_pulseController.isAnimating) {
       _pulseController.repeat(reverse: true);
-    } else if (!widget.isOnline && _pulseController.isAnimating) {
+    } else if ((!widget.isOnline || AppSettings.disableAnimations) && _pulseController.isAnimating) {
       _pulseController.stop();
       _pulseController.reset();
     }
@@ -387,7 +389,7 @@ class _StatusBadgeState extends State<_StatusBadge>
     final ColorScheme colors = theme.colorScheme;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+      duration: AppSettings.disableAnimations ? Duration.zero : const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -450,6 +452,7 @@ class ServerDownloadCard extends StatelessWidget {
     final ColorScheme colors = theme.colorScheme;
 
     return Card(
+      elevation: 3.0,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

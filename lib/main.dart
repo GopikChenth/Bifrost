@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:bifrost/Pages/bifrost_dashboard.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  AppSettings.disableAnimations = await const SettingsRepository().loadDisableAnimations();
   runApp(const BifrostApp());
 }
 
@@ -193,8 +196,12 @@ class BifrostApp extends StatelessWidget {
           inactiveTrackColor: colorScheme.surfaceContainerHighest,
           thumbColor: colorScheme.primary,
           overlayColor: colorScheme.primary.withValues(alpha: 0.12),
-          trackHeight: 6,
-          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+          valueIndicatorColor: colorScheme.primary,
+          valueIndicatorTextStyle: TextStyle(
+            color: colorScheme.onPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+          showValueIndicator: ShowValueIndicator.onDrag,
         ),
 
         // ── Dividers ────────────────────────────────────────────

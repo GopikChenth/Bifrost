@@ -33,11 +33,16 @@ class ServerDirectorySettings {
   }
 }
 
+class AppSettings {
+  static bool disableAnimations = false;
+}
+
 class SettingsRepository {
   const SettingsRepository();
 
   static const String _useDefaultDirectoryKey = 'use_default_server_directory';
   static const String _customDirectoryPathKey = 'custom_server_directory_path';
+  static const String _disableAnimationsKey = 'disable_animations';
 
   Future<ServerDirectorySettings> loadServerDirectorySettings() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -62,5 +67,16 @@ class SettingsRepository {
       _customDirectoryPathKey,
       settings.customDirectoryPath,
     );
+  }
+
+  Future<bool> loadDisableAnimations() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_disableAnimationsKey) ?? false;
+  }
+
+  Future<void> saveDisableAnimations(bool value) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_disableAnimationsKey, value);
+    AppSettings.disableAnimations = value;
   }
 }

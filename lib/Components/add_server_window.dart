@@ -620,6 +620,8 @@ class AddServerFlightShuttleMock extends StatelessWidget {
                 final double sliderMin = 512.0;
                 final double sliderMax =
                     ((totalRamMb / 512.0).ceil() * 512.0).clamp(512.0, double.infinity);
+                final int divisions =
+                    ((sliderMax - sliderMin) / 512.0).round().clamp(1, 256);
                 final double allocatedRamMb = math.min(2048.0, totalRamMb);
 
                 return Column(
@@ -671,7 +673,9 @@ class AddServerFlightShuttleMock extends StatelessWidget {
                     Slider(
                       min: sliderMin,
                       max: sliderMax,
+                      divisions: divisions,
                       value: allocatedRamMb,
+                      label: AddServerWindow.formatMbAsGb(allocatedRamMb),
                       onChanged: (_) {},
                     ),
                     Align(
