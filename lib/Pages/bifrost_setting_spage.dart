@@ -1,3 +1,4 @@
+import 'package:bifrost/Components/theme.dart';
 import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:file_picker/file_picker.dart';
@@ -194,9 +195,7 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Color _getThemeColor(String theme) {
-    if (theme == 'teal') return const Color(0xFF00838F);
-    if (theme == 'frost') return const Color(0xFF5F7082);
-    return const Color(0xFF52A435);
+    return AppTheme.getThemeColor(theme);
   }
 
   @override
