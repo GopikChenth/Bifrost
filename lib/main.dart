@@ -20,41 +20,72 @@ class BifrostApp extends StatelessWidget {
       valueListenable: AppSettings.themeNotifier,
       builder: (BuildContext context, String currentTheme, Widget? child) {
         final bool isTealTheme = currentTheme == 'teal';
+        final bool isFrostTheme = currentTheme == 'frost';
 
         final ColorScheme colorScheme = isTealTheme
             ? ColorScheme.fromSeed(
                 seedColor: const Color(0xFF00838F),
                 brightness: Brightness.dark,
               )
-            : ColorScheme(
-                brightness: Brightness.dark,
-                primary: AppColors.primary,
-                onPrimary: AppColors.textPrimary,
-                primaryContainer: AppColors.primaryLight,
-                onPrimaryContainer: AppColors.backgroundDark,
-                secondary: AppColors.primaryLight,
-                onSecondary: AppColors.backgroundDark,
-                secondaryContainer: AppColors.primaryDark,
-                onSecondaryContainer: AppColors.textPrimary,
-                surface: AppColors.surface,
-                onSurface: AppColors.textPrimary,
-                onSurfaceVariant: AppColors.textSecondary,
-                outline: AppColors.border,
-                outlineVariant: AppColors.border,
-                error: const Color(0xFFE97152),
-                onError: AppColors.textPrimary,
-                errorContainer: const Color(0xFF351C18),
-                onErrorContainer: const Color(0xFFE97152),
-                tertiary: AppColors.accent,
-                onTertiary: AppColors.backgroundDark,
-                tertiaryContainer: AppColors.accent.withValues(alpha: 0.2),
-                onTertiaryContainer: AppColors.accent,
-                surfaceContainerLowest: AppColors.backgroundDark,
-                surfaceContainerLow: AppColors.surface,
-                surfaceContainer: AppColors.surface,
-                surfaceContainerHigh: AppColors.surface,
-                surfaceContainerHighest: AppColors.border,
-              );
+            : isFrostTheme
+                ? ColorScheme(
+                    brightness: Brightness.dark,
+                    primary: const Color(0xFF8FA3B8),
+                    onPrimary: const Color(0xFF182B3D),
+                    primaryContainer: const Color(0xFF253D62),
+                    onPrimaryContainer: const Color(0xFFC1C1C1),
+                    secondary: const Color(0xFF5F7082),
+                    onSecondary: const Color(0xFF182B3D),
+                    secondaryContainer: const Color(0xFF253D62),
+                    onSecondaryContainer: const Color(0xFFC1C1C1),
+                    surface: const Color(0xFF182B3D),
+                    onSurface: const Color(0xFFC1C1C1),
+                    onSurfaceVariant: const Color(0xFF8FA3B8),
+                    outline: const Color(0xFF494D5F),
+                    outlineVariant: const Color(0xFF494D5F),
+                    error: const Color(0xFFE97152),
+                    onError: const Color(0xFFFFFFFF),
+                    surfaceContainerLowest: const Color(0xFF182B3D),
+                    surfaceContainerLow: const Color(0xFF253D62),
+                    surfaceContainer: const Color(0xFF253D62),
+                    surfaceContainerHigh: const Color(0xFF253D62),
+                    surfaceContainerHighest: const Color(0xFF494D5F),
+                  )
+                : ColorScheme(
+                    brightness: Brightness.dark,
+                    primary: AppColors.primary,
+                    onPrimary: AppColors.textPrimary,
+                    primaryContainer: AppColors.primaryLight,
+                    onPrimaryContainer: AppColors.backgroundDark,
+                    secondary: AppColors.primaryLight,
+                    onSecondary: AppColors.backgroundDark,
+                    secondaryContainer: AppColors.primaryDark,
+                    onSecondaryContainer: AppColors.textPrimary,
+                    surface: AppColors.surface,
+                    onSurface: AppColors.textPrimary,
+                    onSurfaceVariant: AppColors.textSecondary,
+                    outline: AppColors.border,
+                    outlineVariant: AppColors.border,
+                    error: const Color(0xFFE97152),
+                    onError: AppColors.textPrimary,
+                    errorContainer: const Color(0xFF351C18),
+                    onErrorContainer: const Color(0xFFE97152),
+                    tertiary: AppColors.accent,
+                    onTertiary: AppColors.backgroundDark,
+                    tertiaryContainer: AppColors.accent.withValues(alpha: 0.2),
+                    onTertiaryContainer: AppColors.accent,
+                    surfaceContainerLowest: AppColors.backgroundDark,
+                    surfaceContainerLow: AppColors.surface,
+                    surfaceContainer: AppColors.surface,
+                    surfaceContainerHigh: AppColors.surface,
+                    surfaceContainerHighest: AppColors.border,
+                  );
+
+        final Color? scaffoldBackgroundColor = isTealTheme
+            ? null
+            : isFrostTheme
+                ? const Color(0xFF182B3D)
+                : AppColors.backgroundDark;
 
         return MaterialApp(
           title: 'Bifrost',
@@ -64,7 +95,7 @@ class BifrostApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: colorScheme,
-        scaffoldBackgroundColor: isTealTheme ? null : AppColors.backgroundDark,
+        scaffoldBackgroundColor: scaffoldBackgroundColor,
 
         // ── Page transitions ────────────────────────────────────
         pageTransitionsTheme: PageTransitionsTheme(

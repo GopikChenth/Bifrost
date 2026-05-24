@@ -18,7 +18,6 @@ class _SettingsPageState extends State<SettingsPage>
   final TextEditingController _customPathController = TextEditingController();
 
   bool _isLoading = true;
-  bool _isSaving = false;
   bool _useDefaultDirectory = true;
   bool _hasAllFilesAccess = false;
   bool _disableAnimations = false;
@@ -122,14 +121,10 @@ class _SettingsPageState extends State<SettingsPage>
       _resolvedDirectoryPath = selectedPath;
       _statusMessage = null;
     });
+    _saveSettingsQuietly();
   }
 
-  Future<void> _saveSettings() async {
-    setState(() {
-      _isSaving = true;
-      _statusMessage = null;
-    });
-
+  Future<void> _saveSettingsQuietly() async {
     final String customPath = _customPathController.text.trim();
     try {
       final ServerDirectorySettings settings = ServerDirectorySettings(
@@ -149,23 +144,11 @@ class _SettingsPageState extends State<SettingsPage>
         _resolvedDirectoryPath = resolvedDirectoryPath;
         _statusMessage = null;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Server directory set to $resolvedDirectoryPath'),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _statusMessage = error.toString().replaceFirst('Exception: ', '');
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
     }
   }
 
@@ -179,6 +162,7 @@ class _SettingsPageState extends State<SettingsPage>
         _resolvedDirectoryPath = _customPathController.text.trim();
       }
     });
+    _saveSettingsQuietly();
   }
 
   @override
@@ -207,6 +191,12 @@ class _SettingsPageState extends State<SettingsPage>
       },
       child: child,
     );
+  }
+
+  Color _getThemeColor(String theme) {
+    if (theme == 'teal') return const Color(0xFF00838F);
+    if (theme == 'frost') return const Color(0xFF5F7082);
+    return const Color(0xFF52A435);
   }
 
   @override
@@ -331,6 +321,7 @@ class _SettingsPageState extends State<SettingsPage>
                                                                 .defaultDirectoryPath
                                                           : value.trim();
                                                 });
+                                                _saveSettingsQuietly();
                                               },
                                             ),
                                           ),
@@ -414,6 +405,7 @@ class _SettingsPageState extends State<SettingsPage>
                               setState(() {
                                 _disableAnimations = value;
                               });
+                              _saveSettingsQuietly();
                             },
                           ),
                           const Divider(height: 24, thickness: 0.5),
@@ -447,12 +439,17 @@ class _SettingsPageState extends State<SettingsPage>
                                       value: 'teal',
                                       child: Text('Classic Teal'),
                                     ),
+                                    DropdownMenuItem<String>(
+                                      value: 'frost',
+                                      child: Text('Frosty Ice'),
+                                    ),
                                   ],
                                   onChanged: (String? value) {
                                     if (value != null) {
                                       setState(() {
                                         _appTheme = value;
                                       });
+                                      _saveSettingsQuietly();
                                     }
                                   },
                                 ),
@@ -462,9 +459,7 @@ class _SettingsPageState extends State<SettingsPage>
                                 width: 24,
                                 height: 24,
                                 decoration: BoxDecoration(
-                                  color: _appTheme == 'main'
-                                      ? const Color(0xFF52A435)
-                                      : const Color(0xFF00838F),
+                                  color: _getThemeColor(_appTheme),
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: colors.outline,
@@ -488,29 +483,6 @@ class _SettingsPageState extends State<SettingsPage>
                 ),
               ],
             ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: FilledButton(
-          onPressed: _isLoading || _isSaving ? null : _saveSettings,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _isSaving
-                ? const SizedBox(
-                    key: ValueKey<String>('saving'),
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text(
-                    'Save Settings',
-                    key: ValueKey<String>('save'),
-                  ),
-          ),
-        ),
-      ),
     );
   }
 }
