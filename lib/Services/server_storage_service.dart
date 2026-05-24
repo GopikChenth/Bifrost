@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Services/storage_access_service.dart';
@@ -947,6 +948,301 @@ class ServerStorageService {
     } catch (_) {
       return <String>[];
     }
+  }
+
+  Future<Map<String, dynamic>> readPlayerDataAndStats(
+    String serverPath,
+    String playerName,
+  ) async {
+    final File userCacheFile = File(path.join(serverPath, 'usercache.json'));
+    String? uuid;
+    if (await userCacheFile.exists()) {
+      try {
+        final String content = await userCacheFile.readAsString();
+        if (content.trim().isNotEmpty) {
+          final Object? decoded = jsonDecode(content);
+          if (decoded is List<dynamic>) {
+            for (final Object? item in decoded) {
+              if (item is Map<String, dynamic>) {
+                final String? name = item['name'] as String?;
+                if (name?.toLowerCase() == playerName.toLowerCase()) {
+                  uuid = item['uuid'] as String?;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    final File propertiesFile = File(path.join(serverPath, 'server.properties'));
+    String levelName = 'world';
+    if (await propertiesFile.exists()) {
+      try {
+        final List<String> lines = await propertiesFile.readAsLines();
+        for (final String line in lines) {
+          final String trimmed = line.trim();
+          if (trimmed.startsWith('level-name=')) {
+            final String val = trimmed.split('=').sublist(1).join('=').trim();
+            if (val.isNotEmpty) {
+              levelName = val;
+            }
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final Map<String, dynamic> resultStats = <String, dynamic>{
+      'playtime': '0m',
+      'deaths': 0,
+      'playerKills': 0,
+      'mobKills': 0,
+      'xpLevel': 0,
+      'health': 20.0,
+      'coordinates': 'N/A',
+    };
+
+    final List<Map<String, dynamic>> inventoryItems = <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> enderItems = <Map<String, dynamic>>[];
+
+    if (uuid != null) {
+      // 1. Read Stats
+      final File statsFile = File(
+        path.join(serverPath, levelName, 'stats', '$uuid.json'),
+      );
+      if (await statsFile.exists()) {
+        try {
+          final String content = await statsFile.readAsString();
+          final Object? decoded = jsonDecode(content);
+          if (decoded is Map<String, dynamic>) {
+            final Map<String, dynamic>? statsMap =
+                decoded['stats'] as Map<String, dynamic>?;
+            if (statsMap != null) {
+              final Map<String, dynamic>? custom =
+                  statsMap['minecraft:custom'] as Map<String, dynamic>?;
+              if (custom != null) {
+                final int playtimeTicks =
+                    custom['minecraft:play_time'] ??
+                    custom['minecraft:play_one_minute'] ??
+                    0;
+                final int deaths = custom['minecraft:deaths'] ?? 0;
+                final int playerKills = custom['minecraft:player_kills'] ?? 0;
+                final int mobKills = custom['minecraft:mob_kills'] ?? 0;
+
+                final int totalSeconds = playtimeTicks ~/ 20;
+                final int hours = totalSeconds ~/ 3600;
+                final int minutes = (totalSeconds % 3600) ~/ 60;
+
+                resultStats['playtime'] =
+                    hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+                resultStats['deaths'] = deaths;
+                resultStats['playerKills'] = playerKills;
+                resultStats['mobKills'] = mobKills;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Read Player Dat
+      final File datFile = File(
+        path.join(serverPath, levelName, 'playerdata', '$uuid.dat'),
+      );
+      if (await datFile.exists()) {
+        try {
+          final Uint8List compressedBytes = await datFile.readAsBytes();
+          final List<int> decompressed = gzip.decode(compressedBytes);
+          final Uint8List decompressedBytes = Uint8List.fromList(decompressed);
+          final Map<String, dynamic> nbt =
+              NbtReader(decompressedBytes).parseRoot();
+
+          final dynamic xpLevelVal = nbt['XpLevel'];
+          if (xpLevelVal is num) {
+            resultStats['xpLevel'] = xpLevelVal.toInt();
+          }
+
+          final dynamic healthVal = nbt['Health'];
+          if (healthVal is num) {
+            resultStats['health'] = healthVal.toDouble();
+          }
+
+          final dynamic posList = nbt['Pos'];
+          if (posList is List<dynamic> && posList.length >= 3) {
+            final double x = (posList[0] as num).toDouble();
+            final double y = (posList[1] as num).toDouble();
+            final double z = (posList[2] as num).toDouble();
+            resultStats['coordinates'] =
+                '${x.toStringAsFixed(1)}, ${y.toStringAsFixed(1)}, ${z.toStringAsFixed(1)}';
+          }
+
+          final dynamic inv = nbt['Inventory'];
+          if (inv is List<dynamic>) {
+            for (final dynamic item in inv) {
+              if (item is Map<String, dynamic>) {
+                inventoryItems.add(<String, dynamic>{
+                  'id': item['id'] as String? ?? '',
+                  'Count': (item['Count'] as num?)?.toInt() ?? 1,
+                  'Slot': (item['Slot'] as num?)?.toInt() ?? 0,
+                });
+              }
+            }
+          }
+
+          final dynamic ender = nbt['EnderItems'];
+          if (ender is List<dynamic>) {
+            for (final dynamic item in ender) {
+              if (item is Map<String, dynamic>) {
+                enderItems.add(<String, dynamic>{
+                  'id': item['id'] as String? ?? '',
+                  'Count': (item['Count'] as num?)?.toInt() ?? 1,
+                  'Slot': (item['Slot'] as num?)?.toInt() ?? 0,
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    return <String, dynamic>{
+      'uuid': uuid,
+      'stats': resultStats,
+      'inventory': inventoryItems,
+      'enderChest': enderItems,
+    };
+  }
+}
+
+class NbtReader {
+  NbtReader(Uint8List bytes) : _data = ByteData.sublistView(bytes);
+
+  final ByteData _data;
+  int _offset = 0;
+
+  int readByte() {
+    final int val = _data.getUint8(_offset);
+    _offset += 1;
+    return val;
+  }
+
+  int readShort() {
+    final int val = _data.getInt16(_offset, Endian.big);
+    _offset += 2;
+    return val;
+  }
+
+  int readInt() {
+    final int val = _data.getInt32(_offset, Endian.big);
+    _offset += 4;
+    return val;
+  }
+
+  int readLong() {
+    final int val = _data.getInt64(_offset, Endian.big);
+    _offset += 8;
+    return val;
+  }
+
+  double readFloat() {
+    final double val = _data.getFloat32(_offset, Endian.big);
+    _offset += 4;
+    return val;
+  }
+
+  double readDouble() {
+    final double val = _data.getFloat64(_offset, Endian.big);
+    _offset += 8;
+    return val;
+  }
+
+  String readString() {
+    final int length = _data.getUint16(_offset, Endian.big);
+    _offset += 2;
+    if (length == 0) return '';
+    final Uint8List bytes =
+        Uint8List.view(_data.buffer, _data.offsetInBytes + _offset, length);
+    _offset += length;
+    return utf8.decode(bytes);
+  }
+
+  dynamic parseTag(int typeId) {
+    switch (typeId) {
+      case 0: // End
+        return null;
+      case 1: // Byte
+        return readByte();
+      case 2: // Short
+        return readShort();
+      case 3: // Int
+        return readInt();
+      case 4: // Long
+        return readLong();
+      case 5: // Float
+        return readFloat();
+      case 6: // Double
+        return readDouble();
+      case 7: // Byte Array
+        final int len = readInt();
+        final Uint8List bytes =
+            Uint8List.view(_data.buffer, _data.offsetInBytes + _offset, len);
+        _offset += len;
+        return bytes;
+      case 8: // String
+        return readString();
+      case 9: // List
+        final int itemType = readByte();
+        final int len = readInt();
+        final List<dynamic> list = <dynamic>[];
+        for (int i = 0; i < len; i++) {
+          final dynamic val = parseTag(itemType);
+          if (val != null) {
+            list.add(val);
+          }
+        }
+        return list;
+      case 10: // Compound
+        final Map<String, dynamic> map = <String, dynamic>{};
+        while (true) {
+          final int innerType = readByte();
+          if (innerType == 0) {
+            break;
+          }
+          final String name = readString();
+          final dynamic val = parseTag(innerType);
+          if (val != null) {
+            map[name] = val;
+          }
+        }
+        return map;
+      case 11: // Int Array
+        final int len = readInt();
+        final List<int> list = <int>[];
+        for (int i = 0; i < len; i++) {
+          list.add(readInt());
+        }
+        return list;
+      case 12: // Long Array
+        final int len = readInt();
+        final List<int> list = <int>[];
+        for (int i = 0; i < len; i++) {
+          list.add(readLong());
+        }
+        return list;
+      default:
+        throw Exception('Unknown NBT tag type $typeId');
+    }
+  }
+
+  Map<String, dynamic> parseRoot() {
+    if (_offset >= _data.lengthInBytes) return <String, dynamic>{};
+    final int typeId = readByte();
+    if (typeId != 10) {
+      throw Exception('Root tag is not compound');
+    }
+    readString();
+    return parseTag(10) as Map<String, dynamic>;
   }
 }
 

@@ -689,6 +689,16 @@ class ServerManagerService extends ChangeNotifier {
     return _serverStorageService.readPlayedPlayers(server.path);
   }
 
+  Future<Map<String, dynamic>> readPlayerDataAndStats(
+    BifrostServer server,
+    String playerName,
+  ) async {
+    return _serverStorageService.readPlayerDataAndStats(
+      server.path,
+      playerName,
+    );
+  }
+
 
   Future<bool> isEulaAccepted(BifrostServer server) async {
     try {

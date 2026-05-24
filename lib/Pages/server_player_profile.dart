@@ -22,7 +22,9 @@ class PlayerProfilePage extends StatefulWidget {
 class _PlayerProfilePageState extends State<PlayerProfilePage> {
   late String _activePlayerName;
   List<String> _playedPlayers = const <String>[];
-  bool _isLoading = true;
+  Map<String, dynamic>? _playerData;
+  bool _isLoadingPlayers = true;
+  bool _isLoadingData = true;
 
   @override
   void initState() {
@@ -41,12 +43,39 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
         if (!_playedPlayers.contains(_activePlayerName)) {
           _playedPlayers.insert(0, _activePlayerName);
         }
-        _isLoading = false;
+        _isLoadingPlayers = false;
       });
     } catch (_) {
       setState(() {
         _playedPlayers = <String>[_activePlayerName];
-        _isLoading = false;
+        _isLoadingPlayers = false;
+      });
+    }
+    await _loadPlayerData();
+  }
+
+  Future<void> _loadPlayerData() async {
+    setState(() {
+      _isLoadingData = true;
+    });
+    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+    if (server == null) {
+      setState(() {
+        _isLoadingData = false;
+      });
+      return;
+    }
+    try {
+      final Map<String, dynamic> data = await widget.serverManager
+          .readPlayerDataAndStats(server, _activePlayerName);
+      setState(() {
+        _playerData = data;
+        _isLoadingData = false;
+      });
+    } catch (_) {
+      setState(() {
+        _playerData = null;
+        _isLoadingData = false;
       });
     }
   }
@@ -70,17 +99,95 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     }
   }
 
+  _InventoryItem? _getInventoryItem(int slotIndex) {
+    if (_playerData == null) return null;
+    final List<dynamic>? inv = _playerData!['inventory'] as List<dynamic>?;
+    return _getItemFromList(inv, slotIndex);
+  }
+
+  _InventoryItem? _getEnderItem(int slotIndex) {
+    if (_playerData == null) return null;
+    final List<dynamic>? ender = _playerData!['enderChest'] as List<dynamic>?;
+    return _getItemFromList(ender, slotIndex);
+  }
+
+  _InventoryItem? _getItemFromList(List<dynamic>? list, int slotIndex) {
+    if (list == null) return null;
+    for (final dynamic item in list) {
+      if (item is Map<String, dynamic> && item['Slot'] == slotIndex) {
+        final String fullId = item['id'] as String? ?? '';
+        if (fullId.isEmpty) return null;
+        final String cleanId = fullId.replaceFirst('minecraft:', '');
+        
+        final String displayName = cleanId
+            .split('_')
+            .map((String word) => word.isEmpty
+                ? ''
+                : '${word[0].toUpperCase()}${word.substring(1)}')
+            .join(' ');
+
+        Color color = Colors.grey;
+        if (cleanId.contains('sword')) {
+          color = Colors.blueGrey;
+        } else if (cleanId.contains('pickaxe') ||
+            cleanId.contains('helmet') ||
+            cleanId.contains('chestplate') ||
+            cleanId.contains('leggings') ||
+            cleanId.contains('boots')) {
+          color = Colors.cyan;
+        } else if (cleanId.contains('shovel') ||
+            cleanId.contains('axe') ||
+            cleanId.contains('iron')) {
+          color = Colors.grey.shade400;
+        } else if (cleanId.contains('beef') ||
+            cleanId.contains('food') ||
+            cleanId.contains('apple')) {
+          color = Colors.red.shade300;
+        } else if (cleanId.contains('pearl')) {
+          color = Colors.teal.shade900;
+        } else if (cleanId.contains('wood') ||
+            cleanId.contains('oak') ||
+            cleanId.contains('planks')) {
+          color = Colors.brown;
+        } else if (cleanId.contains('torch') || cleanId.contains('gold')) {
+          color = Colors.yellow.shade700;
+        } else if (cleanId.contains('cobblestone') ||
+            cleanId.contains('stone')) {
+          color = Colors.grey;
+        }
+
+        return _InventoryItem(
+          name: displayName,
+          cleanId: cleanId,
+          qty: item['Count'] as int? ?? 1,
+          color: color,
+        );
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
     final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
 
+    final Map<String, dynamic>? stats = _playerData?['stats'] as Map<String, dynamic>?;
+    final double healthVal = (stats?['health'] as num?)?.toDouble() ?? 20.0;
+    final int xpVal = (stats?['xpLevel'] as num?)?.toInt() ?? 0;
+    final String coordVal = stats?['coordinates'] as String? ?? 'N/A';
+    final String playtimeVal = stats?['playtime'] as String? ?? '0m';
+    final int deathVal = (stats?['deaths'] as num?)?.toInt() ?? 0;
+    final int playerKillsVal = (stats?['playerKills'] as num?)?.toInt() ?? 0;
+    final int mobKillsVal = (stats?['mobKills'] as num?)?.toInt() ?? 0;
+    final String? playerUuid = _playerData?['uuid'] as String?;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Player Profile'),
       ),
-      body: _isLoading
+      body: _isLoadingPlayers
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(12),
@@ -112,6 +219,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                             setState(() {
                               _activePlayerName = newPlayer;
                             });
+                            _loadPlayerData();
                           }
                         },
                       ),
@@ -122,6 +230,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                 // ---- Player Details Card ----
                 PlayerProfileCard(
                   playerName: _activePlayerName,
+                  uuid: playerUuid,
                   subtitle: server != null && server.isOnline
                       ? 'Live on the server right now'
                       : 'Offline player snapshot',
@@ -182,147 +291,300 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                   ),
                 ),
 
-                // ---- Minecraft Stylized Inventory Grid ----
-                _Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Player Inventory',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
+                if (_isLoadingData)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else ...<Widget>[
+                  // ---- Stats Panel ----
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Statistics',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      // 9x3 main inventory slots
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 9,
-                          crossAxisSpacing: 5,
-                          mainAxisSpacing: 5,
-                        ),
-                        itemCount: 27,
-                        itemBuilder: (BuildContext context, int index) {
-                          final _InventoryItem? item = _getInventoryItem(index);
-                          return _InventorySlot(item: item);
-                        },
-                      ),
-                      
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Divider(thickness: 1.5),
-                      ),
-                      
-                      // 9x1 hotbar slots
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 9,
-                          crossAxisSpacing: 5,
-                          mainAxisSpacing: 5,
-                        ),
-                        itemCount: 9,
-                        itemBuilder: (BuildContext context, int index) {
-                          final _InventoryItem? item = _getInventoryItem(27 + index);
-                          return _InventorySlot(item: item, isHotbar: true);
-                        },
-                      ),
-                      
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Icon(Icons.info_outline_rounded, size: 14, color: colors.onSurfaceVariant),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Visual inventory based on recent player statistics.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colors.onSurfaceVariant,
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.schedule_rounded,
+                                label: 'Playtime',
+                                value: playtimeVal,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.dangerous_rounded,
+                                label: 'Deaths',
+                                value: deathVal.toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.military_tech_rounded,
+                                label: 'XP Level',
+                                value: xpVal.toString(),
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.explore_rounded,
+                                label: 'Coordinates',
+                                value: coordVal,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.favorite_rounded,
+                                label: 'Health',
+                                value: '${healthVal.toStringAsFixed(1)} / 20.0 HP',
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.person_off_rounded,
+                                label: 'Player Kills',
+                                value: playerKillsVal.toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.pets_rounded,
+                                label: 'Mob Kills',
+                                value: mobKillsVal.toString(),
+                              ),
+                            ),
+                            const Spacer(),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                // ---- Stats Panel ----
-                _Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Statistics',
+                  // ---- Equipment Section (Armor & Off-hand) ----
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Equipment & Armor',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            // Armor column
+                            Column(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: _InventorySlot(
+                                    item: _getInventoryItem(103), // Helmet
+                                    emptyIcon: Icons.hdr_strong_outlined,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: _InventorySlot(
+                                    item: _getInventoryItem(102), // Chestplate
+                                    emptyIcon: Icons.accessibility_new_rounded,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: _InventorySlot(
+                                    item: _getInventoryItem(101), // Leggings
+                                    emptyIcon: Icons.airline_seat_legroom_extra_rounded,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: _InventorySlot(
+                                    item: _getInventoryItem(100), // Boots
+                                    emptyIcon: Icons.roller_skating_outlined,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 24),
+                            // Offhand column
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Left Hand / Off-hand',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: _InventorySlot(
+                                    item: _getInventoryItem(-106), // Off-hand
+                                    emptyIcon: Icons.shield_outlined,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ---- Minecraft Stylized Inventory Grid ----
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Player Inventory',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // 9x3 main inventory slots (9 to 35)
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 9,
+                            crossAxisSpacing: 5,
+                            mainAxisSpacing: 5,
+                          ),
+                          itemCount: 27,
+                          itemBuilder: (BuildContext context, int index) {
+                            final _InventoryItem? item = _getInventoryItem(index + 9);
+                            return _InventorySlot(item: item);
+                          },
+                        ),
+                        
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(thickness: 1.5),
+                        ),
+                        
+                        // 9x1 hotbar slots (0 to 8)
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 9,
+                            crossAxisSpacing: 5,
+                            mainAxisSpacing: 5,
+                          ),
+                          itemCount: 9,
+                          itemBuilder: (BuildContext context, int index) {
+                            final _InventoryItem? item = _getInventoryItem(index);
+                            return _InventorySlot(item: item, isHotbar: true);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ---- Collapsible Ender Chest Grid ----
+                  _Panel(
+                    child: ExpansionTile(
+                      leading: Icon(Icons.shopping_bag_rounded, color: colors.primary),
+                      title: Text(
+                        'Ender Chest',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      const Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: _StatTile(
-                              icon: Icons.schedule_rounded,
-                              label: 'Playtime',
-                              value: '2h 14m',
-                            ),
-                          ),
-                          Expanded(
-                            child: _StatTile(
-                              icon: Icons.dangerous_rounded,
-                              label: 'Deaths',
-                              value: '4',
-                            ),
-                          ),
-                        ],
+                      subtitle: Text(
+                        'Collapsible inter-dimensional storage',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
-                    ],
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(top: 12, bottom: 4),
+                      children: <Widget>[
+                        // 9x3 ender chest slots (0 to 26)
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 9,
+                            crossAxisSpacing: 5,
+                            mainAxisSpacing: 5,
+                          ),
+                          itemCount: 27,
+                          itemBuilder: (BuildContext context, int index) {
+                            final _InventoryItem? item = _getEnderItem(index);
+                            return _InventorySlot(item: item);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
     );
-  }
-
-  _InventoryItem? _getInventoryItem(int slotIndex) {
-
-    if (slotIndex == 27) return _InventoryItem(name: 'Netherite Sword', qty: 1, color: Colors.blueGrey);
-    if (slotIndex == 28) return _InventoryItem(name: 'Diamond Pickaxe', qty: 1, color: Colors.cyan);
-    if (slotIndex == 29) return _InventoryItem(name: 'Iron Shovel', qty: 1, color: Colors.grey.shade400);
-    if (slotIndex == 32) return _InventoryItem(name: 'Cooked Beef', qty: 16, color: Colors.red.shade300);
-    if (slotIndex == 35) return _InventoryItem(name: 'Ender Pearl', qty: 8, color: Colors.teal.shade900);
-    
-    if (slotIndex == 4) return _InventoryItem(name: 'Cobblestone', qty: 64, color: Colors.grey);
-    if (slotIndex == 8) return _InventoryItem(name: 'Golden Apple', qty: 2, color: Colors.amber);
-    if (slotIndex == 13) return _InventoryItem(name: 'Oak Wood', qty: 32, color: Colors.brown);
-    if (slotIndex == 22) return _InventoryItem(name: 'Torch', qty: 48, color: Colors.yellow.shade700);
-
-    return null;
   }
 }
 
 class _InventoryItem {
   const _InventoryItem({
     required this.name,
+    required this.cleanId,
     required this.qty,
     required this.color,
   });
 
   final String name;
+  final String cleanId;
   final int qty;
   final Color color;
 }
 
 class _InventorySlot extends StatelessWidget {
-  const _InventorySlot({this.item, this.isHotbar = false});
+  const _InventorySlot({this.item, this.isHotbar = false, this.emptyIcon});
 
   final _InventoryItem? item;
   final bool isHotbar;
+  final IconData? emptyIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -343,28 +605,51 @@ class _InventorySlot extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: item == null
-            ? const SizedBox.shrink()
+            ? (emptyIcon != null 
+                ? Center(
+                    child: Icon(
+                      emptyIcon,
+                      size: 18,
+                      color: colors.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                  )
+                : const SizedBox.shrink())
             : Stack(
                 alignment: Alignment.center,
                 children: <Widget>[
-                  // Render a stylized item box
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: item!.color.withValues(alpha: 0.7),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        item!.name[0],
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                  Image.network(
+                    'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.20.1/items/${item!.cleanId}.png',
+                    width: 28,
+                    height: 28,
+                    fit: BoxFit.contain,
+                    errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                      return Image.network(
+                        'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/${item!.cleanId}.png',
+                        width: 28,
+                        height: 28,
+                        fit: BoxFit.contain,
+                        errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                          return Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: item!.color.withValues(alpha: 0.7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                item!.name[0],
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                   if (item!.qty > 1)
                     Positioned(
@@ -435,22 +720,26 @@ class _StatTile extends StatelessWidget {
         children: <Widget>[
           Icon(icon, color: colors.primary, size: 20),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              Text(
-                value,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

@@ -6,11 +6,13 @@ class PlayerProfileCard extends StatelessWidget {
     required this.playerName,
     required this.subtitle,
     required this.onTap,
+    this.uuid,
   });
 
   final String playerName;
   final String subtitle;
   final VoidCallback onTap;
+  final String? uuid;
 
   @override
   Widget build(BuildContext context) {
@@ -33,11 +35,39 @@ class PlayerProfileCard extends StatelessWidget {
                   color: colors.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  Icons.person_rounded,
-                  color: colors.primary,
-                  size: 34,
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: uuid != null && uuid!.isNotEmpty
+                    ? Image.network(
+                        'https://crafatar.com/avatars/$uuid?size=64&overlay',
+                        fit: BoxFit.cover,
+                        errorBuilder: (BuildContext context, Object error,
+                            StackTrace? stackTrace) {
+                          return Image.network(
+                            'https://minotar.net/avatar/$playerName/64.png',
+                            fit: BoxFit.cover,
+                            errorBuilder: (BuildContext context, Object error,
+                                StackTrace? stackTrace) {
+                              return Icon(
+                                Icons.person_rounded,
+                                color: colors.primary,
+                                size: 34,
+                              );
+                            },
+                          );
+                        },
+                      )
+                    : Image.network(
+                        'https://minotar.net/avatar/$playerName/64.png',
+                        fit: BoxFit.cover,
+                        errorBuilder: (BuildContext context, Object error,
+                            StackTrace? stackTrace) {
+                          return Icon(
+                            Icons.person_rounded,
+                            color: colors.primary,
+                            size: 34,
+                          );
+                        },
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(
