@@ -21,37 +21,14 @@ class PlayerProfilePage extends StatefulWidget {
 
 class _PlayerProfilePageState extends State<PlayerProfilePage> {
   late String _activePlayerName;
-  List<String> _playedPlayers = const <String>[];
   Map<String, dynamic>? _playerData;
-  bool _isLoadingPlayers = true;
   bool _isLoadingData = true;
 
   @override
   void initState() {
     super.initState();
     _activePlayerName = widget.playerName;
-    _loadPlayedPlayers();
-  }
-
-  Future<void> _loadPlayedPlayers() async {
-    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
-    if (server == null) return;
-    try {
-      final List<String> players = await widget.serverManager.readPlayedPlayers(server);
-      setState(() {
-        _playedPlayers = players.isEmpty ? <String>[_activePlayerName] : players;
-        if (!_playedPlayers.contains(_activePlayerName)) {
-          _playedPlayers.insert(0, _activePlayerName);
-        }
-        _isLoadingPlayers = false;
-      });
-    } catch (_) {
-      setState(() {
-        _playedPlayers = <String>[_activePlayerName];
-        _isLoadingPlayers = false;
-      });
-    }
-    await _loadPlayerData();
+    _loadPlayerData();
   }
 
   Future<void> _loadPlayerData() async {
@@ -187,46 +164,9 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
       appBar: AppBar(
         title: const Text('Player Profile'),
       ),
-      body: _isLoadingPlayers
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
+      body: ListView(
               padding: const EdgeInsets.all(12),
               children: <Widget>[
-                // ---- Player Selector Dropdown ----
-                _Panel(
-                  child: Row(
-                    children: <Widget>[
-                      const Icon(Icons.people_alt_rounded),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Select Played Player',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      DropdownButton<String>(
-                        value: _activePlayerName,
-                        items: _playedPlayers.map((String player) {
-                          return DropdownMenuItem<String>(
-                            value: player,
-                            child: Text(player),
-                          );
-                        }).toList(),
-                        onChanged: (String? newPlayer) {
-                          if (newPlayer != null) {
-                            setState(() {
-                              _activePlayerName = newPlayer;
-                            });
-                            _loadPlayerData();
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
                 // ---- Player Details Card ----
                 PlayerProfileCard(
                   playerName: _activePlayerName,
@@ -249,41 +189,52 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                      Row(
                         children: <Widget>[
-                          FilledButton.icon(
-                            onPressed: server != null && server.isOnline
-                                ? () => _send(context, 'kill $_activePlayerName')
-                                : null,
-                            icon: const Icon(Icons.dangerous_rounded),
-                            label: const Text('Kill'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: colors.errorContainer,
-                              foregroundColor: colors.onErrorContainer,
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: server != null && server.isOnline
+                                  ? () => _send(context, 'kill $_activePlayerName')
+                                  : null,
+                              icon: const Icon(Icons.dangerous_rounded, size: 18),
+                              label: const Text('Kill'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: colors.errorContainer,
+                                foregroundColor: colors.onErrorContainer,
+                                padding: EdgeInsets.zero,
+                              ),
                             ),
                           ),
-                          FilledButton.icon(
-                            onPressed: server != null && server.isOnline
-                                ? () => _send(
-                                      context,
-                                      'effect give $_activePlayerName instant_health 1 255 true',
-                                    )
-                                : null,
-                            icon: const Icon(Icons.favorite_rounded),
-                            label: const Text('Heal'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: colors.primaryContainer,
-                              foregroundColor: colors.onPrimaryContainer,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: server != null && server.isOnline
+                                  ? () => _send(
+                                        context,
+                                        'effect give $_activePlayerName instant_health 1 255 true',
+                                      )
+                                  : null,
+                              icon: const Icon(Icons.favorite_rounded, size: 18),
+                              label: const Text('Heal'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: colors.primaryContainer,
+                                foregroundColor: colors.onPrimaryContainer,
+                                padding: EdgeInsets.zero,
+                              ),
                             ),
                           ),
-                          FilledButton.icon(
-                            onPressed: server != null && server.isOnline
-                                ? () => _send(context, 'clear $_activePlayerName')
-                                : null,
-                            icon: const Icon(Icons.inventory_2_rounded),
-                            label: const Text('Clear Inventory'),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: server != null && server.isOnline
+                                  ? () => _send(context, 'clear $_activePlayerName')
+                                  : null,
+                              icon: const Icon(Icons.inventory_2_rounded, size: 18),
+                              label: const Text('Clear Inv'),
+                              style: FilledButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                              ),
+                            ),
                           ),
                         ],
                       ),
