@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bifrost/main.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -78,5 +79,34 @@ void main() {
     // Verify that the title/empty state is shown
     expect(find.text('No servers yet'), findsOneWidget);
     expect(find.text('New Server'), findsOneWidget);
+  });
+
+  testWidgets('Disable Animations Test', (WidgetTester tester) async {
+    // Set animations disabled globally
+    AppSettings.disableAnimations = true;
+
+    // Build the app
+    await tester.pumpWidget(const BifrostApp());
+    
+    // Pump a few times to let ServerManagerService load servers
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Verify FAB is present
+    final Finder fabFinder = find.byType(FloatingActionButton);
+    expect(fabFinder, findsOneWidget);
+
+    // Tap the FAB to trigger the push transition
+    await tester.tap(fabFinder);
+    
+    // Since transition duration is Duration.zero, pumping once should render the page builder instantly
+    await tester.pump();
+
+    // Verify dialog is immediately shown
+    expect(find.text('Add Server'), findsOneWidget);
+
+    // Reset animations setting
+    AppSettings.disableAnimations = false;
   });
 }

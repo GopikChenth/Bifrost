@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:bifrost/Pages/bifrost_dashboard.dart';
 import 'package:bifrost/Utils/app_colors.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  AppSettings.disableAnimations = await const SettingsRepository().loadDisableAnimations();
   runApp(const BifrostApp());
 }
 

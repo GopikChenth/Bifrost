@@ -21,6 +21,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool _isSaving = false;
   bool _useDefaultDirectory = true;
   bool _hasAllFilesAccess = false;
+  bool _disableAnimations = false;
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
 
@@ -61,6 +62,7 @@ class _SettingsPageState extends State<SettingsPage>
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
       final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
+      final bool disableAnimations = await _settingsRepository.loadDisableAnimations();
 
       if (!mounted) return;
 
@@ -69,6 +71,7 @@ class _SettingsPageState extends State<SettingsPage>
         _customPathController.text = settings.customDirectoryPath;
         _resolvedDirectoryPath = resolvedDirectoryPath;
         _hasAllFilesAccess = hasAccess;
+        _disableAnimations = disableAnimations;
         _statusMessage = null;
       });
     } catch (_) {
@@ -82,7 +85,11 @@ class _SettingsPageState extends State<SettingsPage>
         setState(() {
           _isLoading = false;
         });
-        _entranceController.forward();
+        if (AppSettings.disableAnimations) {
+          _entranceController.value = 1.0;
+        } else {
+          _entranceController.forward();
+        }
       }
     }
   }
@@ -127,6 +134,7 @@ class _SettingsPageState extends State<SettingsPage>
         customDirectoryPath: _useDefaultDirectory ? '' : customPath,
       );
       await _settingsRepository.saveServerDirectorySettings(settings);
+      await _settingsRepository.saveDisableAnimations(_disableAnimations);
 
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
@@ -209,155 +217,133 @@ class _SettingsPageState extends State<SettingsPage>
           : ListView(
               padding: const EdgeInsets.all(16),
               children: <Widget>[
-                // ---- Storage permission card ----
                 _stagger(
                   0,
                   Card(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _hasAllFilesAccess
-                              ? colors.outlineVariant
-                              : colors.error.withValues(alpha: 0.5),
-                        ),
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Row(
-                            children: <Widget>[
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                child: Icon(
-                                  _hasAllFilesAccess
-                                      ? Icons.check_circle_rounded
-                                      : Icons.warning_amber_rounded,
-                                  key: ValueKey<bool>(_hasAllFilesAccess),
-                                  color: _hasAllFilesAccess
-                                      ? colors.primary
-                                      : colors.error,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Storage Access',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _hasAllFilesAccess
-                                ? 'All files access is granted. Bifrost can read and write server files directly.'
-                                : 'Bifrost needs "All files access" to manage server files. '
-                                    'Tap the button below to grant it in system settings.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                          if (!_hasAllFilesAccess) ...<Widget>[
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: _requestAllFilesAccess,
-                              icon: const Icon(Icons.settings_rounded),
-                              label: const Text('Grant All Files Access'),
-                            ),
-                          ],
-                        ],
+                    elevation: 1,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: 0.5),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // ---- Server directory card ----
-                _stagger(
-                  1,
-                  Card(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: colors.outlineVariant),
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      padding: const EdgeInsets.all(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
+                          // ---- Storage Access ----
+                          Row(
+                            children: <Widget>[
+                              Icon(
+                                _hasAllFilesAccess
+                                    ? Icons.check_circle_rounded
+                                    : Icons.warning_amber_rounded,
+                                color: _hasAllFilesAccess
+                                    ? colors.primary
+                                    : colors.error,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Storage Access',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (_hasAllFilesAccess)
+                                Text(
+                                  'Granted',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              else
+                                TextButton(
+                                  onPressed: _requestAllFilesAccess,
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text('Grant'),
+                                ),
+                            ],
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+
+                          // ---- Server Directory ----
                           Text(
-                            'Server Directory',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                            'Server Storage',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'All server files are stored in this folder. '
-                            'Each server gets its own subdirectory.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 4),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('Use default storage'),
-                            subtitle: const Text(
-                              ServerDirectorySettings.defaultDirectoryPath,
-                            ),
+                            dense: true,
+                            title: const Text('Use default directory'),
                             value: _useDefaultDirectory,
                             onChanged: _setDefaultDirectory,
                           ),
                           AnimatedSize(
-                            duration: const Duration(milliseconds: 300),
+                            duration: const Duration(milliseconds: 200),
                             curve: Curves.easeInOut,
                             child: !_useDefaultDirectory
                                 ? Padding(
-                                    padding: const EdgeInsets.only(top: 12),
+                                    padding: const EdgeInsets.only(top: 8, bottom: 8),
                                     child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
                                       children: <Widget>[
                                         Expanded(
-                                          child: TextField(
-                                            controller: _customPathController,
-                                            decoration: const InputDecoration(
-                                              labelText:
-                                                  'Custom directory path',
-                                              hintText:
-                                                  '/storage/emulated/0/MyServers',
+                                          child: SizedBox(
+                                            height: 40,
+                                            child: TextField(
+                                              controller: _customPathController,
+                                              style: theme.textTheme.bodyMedium,
+                                              decoration: const InputDecoration(
+                                                isDense: true,
+                                                contentPadding:
+                                                    EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 10,
+                                                ),
+                                                labelText: 'Custom path',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              onChanged: (String value) {
+                                                setState(() {
+                                                  _resolvedDirectoryPath =
+                                                      value.trim().isEmpty
+                                                          ? ServerDirectorySettings
+                                                                .defaultDirectoryPath
+                                                          : value.trim();
+                                                });
+                                              },
                                             ),
-                                            onChanged: (String value) {
-                                              setState(() {
-                                                _resolvedDirectoryPath =
-                                                    value.trim().isEmpty
-                                                        ? ServerDirectorySettings
-                                                              .defaultDirectoryPath
-                                                        : value.trim();
-                                              });
-                                            },
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        SizedBox(
-                                          height: 56,
-                                          child: FilledButton.tonal(
-                                            onPressed: _pickDirectory,
-                                            style: FilledButton.styleFrom(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.folder_open_rounded,
+                                        IconButton.filledTonal(
+                                          onPressed: _pickDirectory,
+                                          icon: const Icon(
+                                            Icons.folder_open_rounded,
+                                            size: 20,
+                                          ),
+                                          style: IconButton.styleFrom(
+                                            minimumSize: const Size(40, 40),
+                                            padding: EdgeInsets.zero,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                           ),
                                         ),
@@ -366,42 +352,35 @@ class _SettingsPageState extends State<SettingsPage>
                                   )
                                 : const SizedBox.shrink(),
                           ),
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: colors.surfaceContainerHighest
-                                  .withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Column(
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  'Active server root',
-                                  style:
-                                      theme.textTheme.labelMedium?.copyWith(
+                                  'Path: ',
+                                  style: theme.textTheme.bodySmall?.copyWith(
                                     color: colors.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                SelectableText(
-                                  _resolvedDirectoryPath,
-                                  style:
-                                      theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                Expanded(
+                                  child: SelectableText(
+                                    _resolvedDirectoryPath,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontFamily: 'monospace',
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           AnimatedSize(
-                            duration: const Duration(milliseconds: 300),
+                            duration: const Duration(milliseconds: 200),
                             curve: Curves.easeInOut,
                             child: _statusMessage != null
                                 ? Padding(
-                                    padding: const EdgeInsets.only(top: 16),
+                                    padding: const EdgeInsets.only(top: 8),
                                     child: Text(
                                       _statusMessage!,
                                       style:
@@ -411,6 +390,27 @@ class _SettingsPageState extends State<SettingsPage>
                                     ),
                                   )
                                 : const SizedBox.shrink(),
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+
+                          // ---- Preferences ----
+                          Text(
+                            'Preferences',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('Disable animations'),
+                            value: _disableAnimations,
+                            onChanged: (bool value) {
+                              setState(() {
+                                _disableAnimations = value;
+                              });
+                            },
                           ),
                         ],
                       ),

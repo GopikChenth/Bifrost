@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
 
 /// A reusable component that implements a premium Material 3 container transform
@@ -86,8 +87,8 @@ class _BifrostContainerTransformState<T> extends State<BifrostContainerTransform
         openRadius: widget.openRadius,
         closedElevation: widget.closedElevation,
         openElevation: widget.openElevation,
-        transitionDuration: widget.transitionDuration,
-        reverseTransitionDuration: widget.reverseTransitionDuration,
+        transitionDuration: AppSettings.disableAnimations ? Duration.zero : widget.transitionDuration,
+        reverseTransitionDuration: AppSettings.disableAnimations ? Duration.zero : widget.reverseTransitionDuration,
         closedWidget: widget.closedBuilder(context, () {}),
         openMockBuilder: widget.openMockBuilder,
         openLayoutWrapper: widget.openLayoutWrapper,
