@@ -659,6 +659,37 @@ class ServerManagerService extends ChangeNotifier {
     return _serverStorageService.readPlayerAccessLists(server.path);
   }
 
+  Future<void> addPlayerAccessEntryOffline({
+    required BifrostServer server,
+    required String storageKey,
+    required String value,
+  }) async {
+    await _serverStorageService.addPlayerAccessEntryOffline(
+      serverPath: server.path,
+      storageKey: storageKey,
+      value: value,
+    );
+    notifyListeners();
+  }
+
+  Future<void> removePlayerAccessEntryOffline({
+    required BifrostServer server,
+    required String storageKey,
+    required String value,
+  }) async {
+    await _serverStorageService.removePlayerAccessEntryOffline(
+      serverPath: server.path,
+      storageKey: storageKey,
+      value: value,
+    );
+    notifyListeners();
+  }
+
+  Future<List<String>> readPlayedPlayers(BifrostServer server) async {
+    return _serverStorageService.readPlayedPlayers(server.path);
+  }
+
+
   Future<bool> isEulaAccepted(BifrostServer server) async {
     try {
       return await _serverStorageService.isEulaAccepted(server.path);

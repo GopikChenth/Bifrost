@@ -6,7 +6,7 @@ import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_card.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_page.dart';
-import 'package:bifrost/Pages/bifrost_setting_spage.dart';
+import 'package:bifrost/Pages/bifrost_setting_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
@@ -230,104 +230,109 @@ class _HomePageState extends State<HomePage>
                         // Download card
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 400),
-                          transitionBuilder: (Widget child,
-                              Animation<double> animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SizeTransition(
-                                sizeFactor: animation,
-                                child: child,
-                              ),
-                            );
-                          },
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SizeTransition(
+                                    sizeFactor: animation,
+                                    child: child,
+                                  ),
+                                );
+                              },
                           child: _serverManager.isCreatingServer
                               ? Padding(
                                   key: const ValueKey<String>('download'),
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: ServerDownloadCard(
                                     serverName:
-                                        _serverManager.activeDownloadServerName ??
-                                            'Preparing server files...',
+                                        _serverManager
+                                            .activeDownloadServerName ??
+                                        'Preparing server files...',
                                     fileName:
                                         _serverManager.activeDownloadFileName,
                                     progress: _serverManager.downloadProgress,
                                     progressLabel:
                                         _serverManager.totalDownloadBytes ==
-                                                null
-                                            ? _formatBytes(
-                                                _serverManager.downloadedBytes)
-                                            : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
+                                            null
+                                        ? _formatBytes(
+                                            _serverManager.downloadedBytes,
+                                          )
+                                        : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
                                     onCancel: _serverManager.cancelCreateServer,
                                   ),
                                 )
                               : const SizedBox.shrink(
-                                  key: ValueKey<String>('no-download')),
+                                  key: ValueKey<String>('no-download'),
+                                ),
                         ),
 
                         // Server cards with stagger
-                        ..._serverManager.servers.asMap().entries.map(
-                              (MapEntry<int, BifrostServer> entry) {
-                            final int index = entry.key;
-                            final BifrostServer server = entry.value;
-                            final int count = _serverManager.servers.length;
-                            final double start = math.min(
-                                index / math.max(count, 1), 0.8);
-                            final double end = math.min(start + 0.4, 1.0);
+                        ..._serverManager.servers.asMap().entries.map((
+                          MapEntry<int, BifrostServer> entry,
+                        ) {
+                          final int index = entry.key;
+                          final BifrostServer server = entry.value;
+                          final int count = _serverManager.servers.length;
+                          final double start = math.min(
+                            index / math.max(count, 1),
+                            0.8,
+                          );
+                          final double end = math.min(start + 0.4, 1.0);
 
-                            return AnimatedBuilder(
-                              animation: _staggerController,
-                              builder: (BuildContext context, Widget? child) {
-                                final double t = Interval(
-                                  start,
-                                  end,
-                                  curve: Curves.easeOutCubic,
-                                ).transform(_staggerController.value);
-                                return Opacity(
-                                  opacity: t,
-                                  child: Transform.translate(
-                                    offset: Offset(0, 30 * (1 - t)),
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: ServerCard(
-                                  name: server.name,
-                                  version: server.version,
-                                  serverType: server.type,
-                                  statusLabel: server.status,
-                                  memoryLabel: server.memoryLabel,
-                                  serverPath: server.path,
-                                  isOnline: server.isOnline,
-                                  isBusy: _serverManager.isCreatingServer ||
-                                      server.isBusy,
-                                  consoleLabel: server.consoleLabel,
-                                  runtimeMessage: server.runtimeMessage,
-                                  onStartServer:
-                                      _serverManager.isCreatingServer
-                                          ? null
-                                          : () {
-                                              _startServer(server);
-                                            },
-                                  onStopServer: _serverManager.isCreatingServer
-                                      ? null
-                                      : () {
-                                          _serverManager.stopServer(server);
-                                        },
-                                  onDelete: _serverManager.isCreatingServer
-                                      ? null
-                                      : () {
-                                          _deleteServer(server);
-                                        },
-                                  onOpenDashboard: () {
-                                    _openServerPage(server);
-                                  },
+                          return AnimatedBuilder(
+                            animation: _staggerController,
+                            builder: (BuildContext context, Widget? child) {
+                              final double t = Interval(
+                                start,
+                                end,
+                                curve: Curves.easeOutCubic,
+                              ).transform(_staggerController.value);
+                              return Opacity(
+                                opacity: t,
+                                child: Transform.translate(
+                                  offset: Offset(0, 30 * (1 - t)),
+                                  child: child,
                                 ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: ServerCard(
+                                name: server.name,
+                                version: server.version,
+                                serverType: server.type,
+                                statusLabel: server.status,
+                                memoryLabel: server.memoryLabel,
+                                serverPath: server.path,
+                                isOnline: server.isOnline,
+                                isBusy:
+                                    _serverManager.isCreatingServer ||
+                                    server.isBusy,
+                                consoleLabel: server.consoleLabel,
+                                runtimeMessage: server.runtimeMessage,
+                                onStartServer: _serverManager.isCreatingServer
+                                    ? null
+                                    : () {
+                                        _startServer(server);
+                                      },
+                                onStopServer: _serverManager.isCreatingServer
+                                    ? null
+                                    : () {
+                                        _serverManager.stopServer(server);
+                                      },
+                                onDelete: _serverManager.isCreatingServer
+                                    ? null
+                                    : () {
+                                        _deleteServer(server);
+                                      },
+                                onOpenDashboard: () {
+                                  _openServerPage(server);
+                                },
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -344,7 +349,9 @@ class _HomePageState extends State<HomePage>
                   return;
                 }
 
-                final String? message = await _serverManager.createServer(newServer);
+                final String? message = await _serverManager.createServer(
+                  newServer,
+                );
                 if (!context.mounted) {
                   return;
                 }
@@ -356,14 +363,15 @@ class _HomePageState extends State<HomePage>
                   context,
                 ).showSnackBar(SnackBar(content: Text(message)));
               },
-              closedBuilder: (BuildContext context, VoidCallback openContainer) {
-                return FloatingActionButton.extended(
-                  heroTag: null,
-                  onPressed: openContainer,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('New Server'),
-                );
-              },
+              closedBuilder:
+                  (BuildContext context, VoidCallback openContainer) {
+                    return FloatingActionButton.extended(
+                      heroTag: null,
+                      onPressed: openContainer,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('New Server'),
+                    );
+                  },
               openBuilder: (BuildContext context, VoidCallback closeContainer) {
                 return const AddServerWindow();
               },
@@ -373,7 +381,10 @@ class _HomePageState extends State<HomePage>
               openLayoutWrapper: (BuildContext context, Widget child) {
                 return Center(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 24,
+                    ),
                     child: child,
                   ),
                 );

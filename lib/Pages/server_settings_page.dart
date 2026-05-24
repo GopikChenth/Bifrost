@@ -638,7 +638,7 @@ class _SettingsDropdown extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         items: <DropdownMenuItem<String>>[
           for (final String item in values)
             DropdownMenuItem<String>(value: item, child: Text(item)),

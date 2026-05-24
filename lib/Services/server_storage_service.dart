@@ -823,6 +823,131 @@ class ServerStorageService {
     final int mb = unit == 'GB' ? (value * 1024).round() : value.round();
     return mb < 512 ? 512 : mb;
   }
+
+  Future<void> addPlayerAccessEntryOffline({
+    required String serverPath,
+    required String storageKey,
+    required String value,
+  }) async {
+    final File file = _getPlayerAccessFile(serverPath, storageKey);
+    final String valueKey = storageKey == 'bannedIps' ? 'ip' : 'name';
+
+    List<dynamic> list = <dynamic>[];
+    if (await file.exists()) {
+      try {
+        final String content = await file.readAsString();
+        if (content.trim().isNotEmpty) {
+          final Object? decoded = jsonDecode(content);
+          if (decoded is List<dynamic>) {
+            list = decoded;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final bool exists = list.any((dynamic item) {
+      if (item is Map<String, dynamic>) {
+        return (item[valueKey] as String?)?.toLowerCase() == value.toLowerCase();
+      }
+      return false;
+    });
+
+    if (!exists) {
+      final Map<String, dynamic> entry = <String, dynamic>{};
+      if (storageKey == 'bannedIps') {
+        entry['ip'] = value;
+        entry['created'] = DateTime.now().toString();
+        entry['source'] = 'Bifrost';
+        entry['expires'] = 'forever';
+        entry['reason'] = 'Banned by admin';
+      } else {
+        entry['uuid'] = '';
+        entry['name'] = value;
+        if (storageKey == 'ops') {
+          entry['level'] = 4;
+          entry['bypassesPlayerLimit'] = false;
+        } else if (storageKey == 'bannedPlayers') {
+          entry['created'] = DateTime.now().toString();
+          entry['source'] = 'Bifrost';
+          entry['expires'] = 'forever';
+          entry['reason'] = 'Banned by admin';
+        }
+      }
+      list.add(entry);
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(list));
+    }
+  }
+
+  Future<void> removePlayerAccessEntryOffline({
+    required String serverPath,
+    required String storageKey,
+    required String value,
+  }) async {
+    final File file = _getPlayerAccessFile(serverPath, storageKey);
+    final String valueKey = storageKey == 'bannedIps' ? 'ip' : 'name';
+
+    if (!await file.exists()) {
+      return;
+    }
+
+    List<dynamic> list = <dynamic>[];
+    try {
+      final String content = await file.readAsString();
+      if (content.trim().isNotEmpty) {
+        final Object? decoded = jsonDecode(content);
+        if (decoded is List<dynamic>) {
+          list = decoded;
+        }
+      }
+    } catch (_) {
+      return;
+    }
+
+    list.removeWhere((dynamic item) {
+      if (item is Map<String, dynamic>) {
+        return (item[valueKey] as String?)?.toLowerCase() == value.toLowerCase();
+      }
+      return false;
+    });
+
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(list));
+  }
+
+  File _getPlayerAccessFile(String serverPath, String storageKey) {
+    return switch (storageKey) {
+      'whitelist' => File(path.join(serverPath, 'whitelist.json')),
+      'ops' => File(path.join(serverPath, 'ops.json')),
+      'bannedPlayers' => File(path.join(serverPath, 'banned-players.json')),
+      'bannedIps' => File(path.join(serverPath, 'banned-ips.json')),
+      _ => throw ArgumentError('Unknown storage key: $storageKey'),
+    };
+  }
+
+  Future<List<String>> readPlayedPlayers(String serverPath) async {
+    final File userCacheFile = File(path.join(serverPath, 'usercache.json'));
+    if (!await userCacheFile.exists()) {
+      return <String>[];
+    }
+    try {
+      final String content = await userCacheFile.readAsString();
+      if (content.trim().isEmpty) return <String>[];
+      final Object? decoded = jsonDecode(content);
+      if (decoded is! List<dynamic>) return <String>[];
+
+      final List<String> players = <String>[];
+      for (final Object? item in decoded) {
+        if (item is Map<String, dynamic>) {
+          final String? name = item['name'] as String?;
+          if (name != null && name.trim().isNotEmpty) {
+            players.add(name.trim());
+          }
+        }
+      }
+      return players;
+    } catch (_) {
+      return <String>[];
+    }
+  }
 }
 
 class _FileCopyTask {
