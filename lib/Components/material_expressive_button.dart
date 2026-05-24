@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 
 class MaterialExpressiveButton extends StatefulWidget {
   const MaterialExpressiveButton({
@@ -162,6 +163,7 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
   }
 
   void _handleTapDown(TapDownDetails details) {
+    HapticFeedback.lightImpact();
     _pressStartTime = DateTime.now();
     setState(() {
       _isPressed = true;
