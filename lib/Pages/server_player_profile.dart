@@ -250,71 +250,6 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                   onTap: () {},
                 ),
 
-                // ---- Commands Panel ----
-                _Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Server Actions',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: server != null && server.isOnline
-                                  ? () => _send(context, 'kill $_activePlayerName')
-                                  : null,
-                              icon: const Icon(Icons.dangerous_rounded, size: 18),
-                              label: const Text('Kill'),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: colors.errorContainer,
-                                foregroundColor: colors.onErrorContainer,
-                                padding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: server != null && server.isOnline
-                                  ? () => _send(
-                                        context,
-                                        'effect give $_activePlayerName instant_health 1 255 true',
-                                      )
-                                  : null,
-                              icon: const Icon(Icons.favorite_rounded, size: 18),
-                              label: const Text('Heal'),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: colors.primaryContainer,
-                                foregroundColor: colors.onPrimaryContainer,
-                                padding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: server != null && server.isOnline
-                                  ? () => _send(context, 'clear $_activePlayerName')
-                                  : null,
-                              icon: const Icon(Icons.inventory_2_rounded, size: 18),
-                              label: const Text('Clear Inv'),
-                              style: FilledButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
                 if (_isLoadingData)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
@@ -323,91 +258,6 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                     ),
                   )
                 else ...<Widget>[
-                  // ---- Stats Panel ----
-                  _Panel(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Statistics',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.schedule_rounded,
-                                label: 'Playtime',
-                                value: playtimeVal,
-                              ),
-                            ),
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.dangerous_rounded,
-                                label: 'Deaths',
-                                value: deathVal.toString(),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.military_tech_rounded,
-                                label: 'XP Level',
-                                value: xpVal.toString(),
-                              ),
-                            ),
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.explore_rounded,
-                                label: 'Coordinates',
-                                value: coordVal,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.favorite_rounded,
-                                label: 'Health',
-                                value: '${healthVal.round()} / 20 HP',
-                              ),
-                            ),
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.person_off_rounded,
-                                label: 'Player Kills',
-                                value: playerKillsVal.toString(),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.pets_rounded,
-                                label: 'Mob Kills',
-                                value: mobKillsVal.toString(),
-                              ),
-                            ),
-                            const Spacer(),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
                   // ---- Player Inventory (Unified Equipment & Main Grid) ----
                   _Panel(
                     child: Column(
@@ -622,6 +472,156 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                       ],
                     ),
                   ),
+
+                  // ---- Commands Panel ----
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Server Actions',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: server != null && server.isOnline
+                                    ? () => _send(context, 'kill $_activePlayerName')
+                                    : null,
+                                icon: const Icon(Icons.dangerous_rounded, size: 18),
+                                label: const Text('Kill'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: colors.errorContainer,
+                                  foregroundColor: colors.onErrorContainer,
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: server != null && server.isOnline
+                                    ? () => _send(
+                                          context,
+                                          'effect give $_activePlayerName instant_health 1 255 true',
+                                        )
+                                    : null,
+                                icon: const Icon(Icons.favorite_rounded, size: 18),
+                                label: const Text('Heal'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: colors.primaryContainer,
+                                  foregroundColor: colors.onPrimaryContainer,
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: server != null && server.isOnline
+                                    ? () => _send(context, 'clear $_activePlayerName')
+                                    : null,
+                                icon: const Icon(Icons.inventory_2_rounded, size: 18),
+                                label: const Text('Clear Inv'),
+                                style: FilledButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ---- Stats Panel ----
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Statistics',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.schedule_rounded,
+                                label: 'Playtime',
+                                value: playtimeVal,
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.dangerous_rounded,
+                                label: 'Deaths',
+                                value: deathVal.toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.military_tech_rounded,
+                                label: 'XP Level',
+                                value: xpVal.toString(),
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.explore_rounded,
+                                label: 'Coordinates',
+                                value: coordVal,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.favorite_rounded,
+                                label: 'Health',
+                                value: '${healthVal.round()} / 20 HP',
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.person_off_rounded,
+                                label: 'Player Kills',
+                                value: playerKillsVal.toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.pets_rounded,
+                                label: 'Mob Kills',
+                                value: mobKillsVal.toString(),
+                              ),
+                            ),
+                            const Spacer(),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -661,96 +661,109 @@ class _InventorySlot extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
     
-    return Tooltip(
-      message: item != null ? '${item!.name} (x${item!.qty})' : 'Empty Slot',
-      child: Container(
-        decoration: BoxDecoration(
-          color: isHotbar 
-              ? colors.surfaceContainerHigh 
-              : colors.surfaceContainerHighest.withValues(alpha: 0.5),
-          border: Border.all(
-            color: isHotbar ? colors.primary.withValues(alpha: 0.5) : colors.outlineVariant,
-            width: isHotbar ? 1.5 : 1.0,
+    return GestureDetector(
+      onTap: () {
+        final String text = item != null ? '${item!.name} (x${item!.qty})' : 'Empty Slot';
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(text),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
           ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: item == null
-            ? (emptyIcon != null 
-                ? Center(
-                    child: Icon(
-                      emptyIcon,
-                      size: 18,
-                      color: colors.onSurfaceVariant.withValues(alpha: 0.3),
-                    ),
-                  )
-                : const SizedBox.shrink())
-            : Stack(
-                alignment: Alignment.center,
-                children: <Widget>[
-                  Image.network(
-                    'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/$serverVersion/items/${item!.cleanId}.png',
-                    width: 28,
-                    height: 28,
-                    fit: BoxFit.contain,
-                    errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                      return Image.network(
-                        'https://assets.mcasset.cloud/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
-                        width: 28,
-                        height: 28,
-                        fit: BoxFit.contain,
-                        errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                          return Image.network(
-                            'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
-                            width: 28,
-                            height: 28,
-                            fit: BoxFit.contain,
-                            errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                              return Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: item!.color.withValues(alpha: 0.7),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    item!.name.isNotEmpty ? item!.name[0] : '?',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+        );
+      },
+      child: Tooltip(
+        message: item != null ? '${item!.name} (x${item!.qty})' : 'Empty Slot',
+        child: Container(
+          decoration: BoxDecoration(
+            color: isHotbar 
+                ? colors.surfaceContainerHigh 
+                : colors.surfaceContainerHighest.withValues(alpha: 0.5),
+            border: Border.all(
+              color: isHotbar ? colors.primary.withValues(alpha: 0.5) : colors.outlineVariant,
+              width: isHotbar ? 1.5 : 1.0,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: item == null
+              ? (emptyIcon != null 
+                  ? Center(
+                      child: Icon(
+                        emptyIcon,
+                        size: 18,
+                        color: colors.onSurfaceVariant.withValues(alpha: 0.3),
+                      ),
+                    )
+                  : const SizedBox.shrink())
+              : Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    Image.network(
+                      'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/$serverVersion/items/${item!.cleanId}.png',
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.contain,
+                      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                        return Image.network(
+                          'https://assets.mcasset.cloud/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
+                          width: 28,
+                          height: 28,
+                          fit: BoxFit.contain,
+                          errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                            return Image.network(
+                              'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
+                              width: 28,
+                              height: 28,
+                              fit: BoxFit.contain,
+                              errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                                return Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: item!.color.withValues(alpha: 0.7),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      item!.name.isNotEmpty ? item!.name[0] : '?',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  if (item!.qty > 1)
-                    Positioned(
-                      bottom: 2,
-                      right: 4,
-                      child: Text(
-                        item!.qty.toString(),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          shadows: <Shadow>[
-                            Shadow(
-                              color: Colors.black,
-                              offset: Offset(1, 1),
-                              blurRadius: 2,
-                            ),
-                          ],
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                    if (item!.qty > 1)
+                      Positioned(
+                        bottom: 2,
+                        right: 4,
+                        child: Text(
+                          item!.qty.toString(),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            shadows: <Shadow>[
+                              Shadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 2,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
+                  ],
+                ),
+        ),
       ),
     );
   }
