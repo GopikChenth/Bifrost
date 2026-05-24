@@ -1,7 +1,7 @@
-import 'package:bifrost/Utils/settings_repository.dart';
+import 'package:bifrost/Components/bifrost_bounce.dart';
 import 'package:flutter/material.dart';
 
-class PlayerProfileCard extends StatefulWidget {
+class PlayerProfileCard extends StatelessWidget {
   const PlayerProfileCard({
     super.key,
     required this.playerName,
@@ -16,31 +16,17 @@ class PlayerProfileCard extends StatefulWidget {
   final String? uuid;
 
   @override
-  State<PlayerProfileCard> createState() => _PlayerProfileCardState();
-}
-
-class _PlayerProfileCardState extends State<PlayerProfileCard> {
-  double _scale = 1.0;
-
-  @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
-    return AnimatedScale(
-      scale: _scale,
-      duration: AppSettings.disableAnimations
-          ? Duration.zero
-          : const Duration(milliseconds: 200),
-      curve: Curves.easeOutBack,
+    return BifrostBounce(
+      scaleFactor: 0.97,
       child: Card(
         margin: const EdgeInsets.only(bottom: 10),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: widget.onTap,
-          onTapDown: (_) => setState(() => _scale = 0.97),
-          onTapUp: (_) => setState(() => _scale = 1.0),
-          onTapCancel: () => setState(() => _scale = 1.0),
+          onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -53,14 +39,14 @@ class _PlayerProfileCardState extends State<PlayerProfileCard> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: widget.uuid != null && widget.uuid!.isNotEmpty
+                  child: uuid != null && uuid!.isNotEmpty
                       ? Image.network(
-                          'https://crafatar.com/avatars/${widget.uuid}?size=64&overlay',
+                          'https://crafatar.com/avatars/$uuid?size=64&overlay',
                           fit: BoxFit.cover,
                           errorBuilder: (BuildContext context, Object error,
                               StackTrace? stackTrace) {
                             return Image.network(
-                              'https://minotar.net/avatar/${widget.playerName}/64.png',
+                              'https://minotar.net/avatar/$playerName/64.png',
                               fit: BoxFit.cover,
                               errorBuilder: (BuildContext context, Object error,
                                   StackTrace? stackTrace) {
@@ -74,7 +60,7 @@ class _PlayerProfileCardState extends State<PlayerProfileCard> {
                           },
                         )
                       : Image.network(
-                          'https://minotar.net/avatar/${widget.playerName}/64.png',
+                          'https://minotar.net/avatar/$playerName/64.png',
                           fit: BoxFit.cover,
                           errorBuilder: (BuildContext context, Object error,
                               StackTrace? stackTrace) {
@@ -92,7 +78,7 @@ class _PlayerProfileCardState extends State<PlayerProfileCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        widget.playerName,
+                        playerName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -101,7 +87,7 @@ class _PlayerProfileCardState extends State<PlayerProfileCard> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        widget.subtitle,
+                        subtitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(

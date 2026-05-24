@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:bifrost/Services/paper_jar_service.dart';
 import 'package:bifrost/Services/vanilla_jar_service.dart';
+import 'package:bifrost/Components/bifrost_bounce.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -522,9 +523,13 @@ class _AddServerWindowState extends State<AddServerWindow> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: <Widget>[
-                      TextButton(onPressed: _closeDialog, child: const Text('Close')),
+                      BifrostBounce(
+                        child: TextButton(onPressed: _closeDialog, child: const Text('Close')),
+                      ),
                       const SizedBox(width: 8),
-                      FilledButton(onPressed: _submitServer, child: const Text('Add')),
+                      BifrostBounce(
+                        child: FilledButton(onPressed: _submitServer, child: const Text('Add')),
+                      ),
                     ],
                   ),
                 ],
@@ -690,14 +695,18 @@ class AddServerFlightShuttleMock extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: <Widget>[
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('Close'),
+                BifrostBounce(
+                  child: TextButton(
+                    onPressed: () {},
+                    child: const Text('Close'),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () {},
-                  child: const Text('Add'),
+                BifrostBounce(
+                  child: FilledButton(
+                    onPressed: () {},
+                    child: const Text('Add'),
+                  ),
                 ),
               ],
             ),
