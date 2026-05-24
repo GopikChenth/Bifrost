@@ -71,7 +71,7 @@ class LocalServerStatus {
   final String consoleOutput;
 
   bool get isBusy =>
-      state == 'starting' || state == 'running' || state == 'stopping';
+      state == 'starting' || state == 'stopping';
 
   factory LocalServerStatus.fromMap(Map<Object?, Object?> map) {
     return LocalServerStatus(

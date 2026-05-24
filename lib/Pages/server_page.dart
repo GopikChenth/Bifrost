@@ -378,7 +378,7 @@ class _ServerPageState extends State<ServerPage>
                   pressedBackgroundColor: colors.secondary,
                   pressedForegroundColor: colors.onSecondary,
                   expanded: true,
-                  isActive: false,
+                  isActive: server.status == 'Restarting',
                   siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
                   onPressStateChanged: (bool isPressed) {
                     setState(() {
