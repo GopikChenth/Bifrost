@@ -335,91 +335,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                     ),
                   ),
 
-                  // ---- Equipment Section (Armor & Off-hand) ----
-                  _Panel(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Equipment & Armor',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            // Armor column
-                            Column(
-                              children: <Widget>[
-                                SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: _InventorySlot(
-                                    item: _getInventoryItem(103), // Helmet
-                                    emptyIcon: Icons.hdr_strong_outlined,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: _InventorySlot(
-                                    item: _getInventoryItem(102), // Chestplate
-                                    emptyIcon: Icons.accessibility_new_rounded,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: _InventorySlot(
-                                    item: _getInventoryItem(101), // Leggings
-                                    emptyIcon: Icons.airline_seat_legroom_extra_rounded,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: _InventorySlot(
-                                    item: _getInventoryItem(100), // Boots
-                                    emptyIcon: Icons.roller_skating_outlined,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(width: 24),
-                            // Offhand column
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Left Hand / Off-hand',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colors.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: _InventorySlot(
-                                    item: _getInventoryItem(-106), // Off-hand
-                                    emptyIcon: Icons.shield_outlined,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ---- Minecraft Stylized Inventory Grid ----
+                  // ---- Player Inventory (Unified Equipment & Main Grid) ----
                   _Panel(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,7 +346,148 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
+                        
+                        // Upper Equipment / Avatar section (Minecraft Layout)
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              // Left: Armor Slots (Helmet to Boots)
+                              Expanded(
+                                flex: 1,
+                                child: Column(
+                                  children: <Widget>[
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _InventorySlot(
+                                        item: _getInventoryItem(103), // Helmet
+                                        emptyIcon: Icons.hdr_strong_outlined,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _InventorySlot(
+                                        item: _getInventoryItem(102), // Chestplate
+                                        emptyIcon: Icons.accessibility_new_rounded,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _InventorySlot(
+                                        item: _getInventoryItem(101), // Leggings
+                                        emptyIcon: Icons.airline_seat_legroom_extra_rounded,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _InventorySlot(
+                                        item: _getInventoryItem(100), // Boots
+                                        emptyIcon: Icons.roller_skating_outlined,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Spacer(flex: 1),
+                              
+                              // Center: Green Area showing Player Name and Full Body Avatar
+                              Expanded(
+                                flex: 5,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade900.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.green.shade700.withValues(alpha: 0.4),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: <Widget>[
+                                      Text(
+                                        _activePlayerName,
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.green.shade300,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Expanded(
+                                        child: playerUuid != null && playerUuid.isNotEmpty
+                                            ? Image.network(
+                                                'https://crafatar.com/renders/body/$playerUuid?scale=3&overlay',
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (BuildContext context, Object error,
+                                                    StackTrace? stackTrace) {
+                                                  return Image.network(
+                                                    'https://minotar.net/armor/body/$_activePlayerName/100.png',
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (BuildContext context, Object error,
+                                                        StackTrace? stackTrace) {
+                                                      return Center(
+                                                        child: Icon(
+                                                          Icons.accessibility_new_rounded,
+                                                          color: Colors.green.shade400,
+                                                          size: 48,
+                                                        ),
+                                                      );
+                                                    },
+                                                  );
+                                                },
+                                              )
+                                            : Image.network(
+                                                'https://minotar.net/armor/body/$_activePlayerName/100.png',
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (BuildContext context, Object error,
+                                                    StackTrace? stackTrace) {
+                                                  return Center(
+                                                    child: Icon(
+                                                      Icons.accessibility_new_rounded,
+                                                      color: Colors.green.shade400,
+                                                      size: 48,
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const Spacer(flex: 1),
+                              
+                              // Right: Off-hand Slot aligned at the bottom (next to boots)
+                              Expanded(
+                                flex: 1,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: <Widget>[
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _InventorySlot(
+                                        item: _getInventoryItem(-106), // Off-hand
+                                        emptyIcon: Icons.shield_outlined,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Divider(thickness: 1.5),
+                        ),
                         
                         // 9x3 main inventory slots (9 to 35)
                         GridView.builder(
