@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ServerDirectorySettings {
@@ -35,6 +36,7 @@ class ServerDirectorySettings {
 
 class AppSettings {
   static bool disableAnimations = false;
+  static final ValueNotifier<String> themeNotifier = ValueNotifier<String>('main');
 }
 
 class SettingsRepository {
@@ -43,6 +45,7 @@ class SettingsRepository {
   static const String _useDefaultDirectoryKey = 'use_default_server_directory';
   static const String _customDirectoryPathKey = 'custom_server_directory_path';
   static const String _disableAnimationsKey = 'disable_animations';
+  static const String _appThemeKey = 'app_theme';
 
   Future<ServerDirectorySettings> loadServerDirectorySettings() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -78,5 +81,16 @@ class SettingsRepository {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_disableAnimationsKey, value);
     AppSettings.disableAnimations = value;
+  }
+
+  Future<String> loadAppTheme() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_appThemeKey) ?? 'main';
+  }
+
+  Future<void> saveAppTheme(String value) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_appThemeKey, value);
+    AppSettings.themeNotifier.value = value;
   }
 }

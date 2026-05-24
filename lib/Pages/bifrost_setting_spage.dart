@@ -22,6 +22,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool _useDefaultDirectory = true;
   bool _hasAllFilesAccess = false;
   bool _disableAnimations = false;
+  String _appTheme = 'main';
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
 
@@ -63,6 +64,7 @@ class _SettingsPageState extends State<SettingsPage>
           .resolveBaseDirectoryPath();
       final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
       final bool disableAnimations = await _settingsRepository.loadDisableAnimations();
+      final String appTheme = await _settingsRepository.loadAppTheme();
 
       if (!mounted) return;
 
@@ -72,6 +74,7 @@ class _SettingsPageState extends State<SettingsPage>
         _resolvedDirectoryPath = resolvedDirectoryPath;
         _hasAllFilesAccess = hasAccess;
         _disableAnimations = disableAnimations;
+        _appTheme = appTheme;
         _statusMessage = null;
       });
     } catch (_) {
@@ -135,6 +138,7 @@ class _SettingsPageState extends State<SettingsPage>
       );
       await _settingsRepository.saveServerDirectorySettings(settings);
       await _settingsRepository.saveDisableAnimations(_disableAnimations);
+      await _settingsRepository.saveAppTheme(_appTheme);
 
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
@@ -411,6 +415,44 @@ class _SettingsPageState extends State<SettingsPage>
                                 _disableAnimations = value;
                               });
                             },
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+                          Text(
+                            'Appearance Theme',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<String>(
+                              segments: const <ButtonSegment<String>>[
+                                ButtonSegment<String>(
+                                  value: 'main',
+                                  label: Text('Premium Dark'),
+                                  icon: Icon(Icons.palette_outlined, size: 18),
+                                ),
+                                ButtonSegment<String>(
+                                  value: 'teal',
+                                  label: Text('Classic Teal'),
+                                  icon: Icon(Icons.spa_outlined, size: 18),
+                                ),
+                              ],
+                              selected: <String>{_appTheme},
+                              onSelectionChanged: (Set<String> newSelection) {
+                                setState(() {
+                                  _appTheme = newSelection.first;
+                                });
+                              },
+                              showSelectedIcon: false,
+                              style: SegmentedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),

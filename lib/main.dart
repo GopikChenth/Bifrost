@@ -5,7 +5,9 @@ import 'package:bifrost/Utils/settings_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AppSettings.disableAnimations = await const SettingsRepository().loadDisableAnimations();
+  final SettingsRepository settingsRepo = const SettingsRepository();
+  AppSettings.disableAnimations = await settingsRepo.loadDisableAnimations();
+  AppSettings.themeNotifier.value = await settingsRepo.loadAppTheme();
   runApp(const BifrostApp());
 }
 
@@ -14,45 +16,55 @@ class BifrostApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: AppColors.primary,
-      onPrimary: AppColors.textPrimary,
-      primaryContainer: AppColors.primaryLight,
-      onPrimaryContainer: AppColors.backgroundDark,
-      secondary: AppColors.primaryLight,
-      onSecondary: AppColors.backgroundDark,
-      secondaryContainer: AppColors.primaryDark,
-      onSecondaryContainer: AppColors.textPrimary,
-      surface: AppColors.surface,
-      onSurface: AppColors.textPrimary,
-      onSurfaceVariant: AppColors.textSecondary,
-      outline: AppColors.border,
-      outlineVariant: AppColors.border,
-      error: const Color(0xFFE97152),
-      onError: AppColors.textPrimary,
-      errorContainer: const Color(0xFF351C18),
-      onErrorContainer: const Color(0xFFE97152),
-      tertiary: AppColors.accent,
-      onTertiary: AppColors.backgroundDark,
-      tertiaryContainer: AppColors.accent.withValues(alpha: 0.2),
-      onTertiaryContainer: AppColors.accent,
-      surfaceContainerLowest: AppColors.backgroundDark,
-      surfaceContainerLow: AppColors.surface,
-      surfaceContainer: AppColors.surface,
-      surfaceContainerHigh: AppColors.surface,
-      surfaceContainerHighest: AppColors.border,
-    );
+    return ValueListenableBuilder<String>(
+      valueListenable: AppSettings.themeNotifier,
+      builder: (BuildContext context, String currentTheme, Widget? child) {
+        final bool isTealTheme = currentTheme == 'teal';
 
-    return MaterialApp(
-      title: 'Bifrost',
+        final ColorScheme colorScheme = isTealTheme
+            ? ColorScheme.fromSeed(
+                seedColor: const Color(0xFF00838F),
+                brightness: Brightness.dark,
+              )
+            : ColorScheme(
+                brightness: Brightness.dark,
+                primary: AppColors.primary,
+                onPrimary: AppColors.textPrimary,
+                primaryContainer: AppColors.primaryLight,
+                onPrimaryContainer: AppColors.backgroundDark,
+                secondary: AppColors.primaryLight,
+                onSecondary: AppColors.backgroundDark,
+                secondaryContainer: AppColors.primaryDark,
+                onSecondaryContainer: AppColors.textPrimary,
+                surface: AppColors.surface,
+                onSurface: AppColors.textPrimary,
+                onSurfaceVariant: AppColors.textSecondary,
+                outline: AppColors.border,
+                outlineVariant: AppColors.border,
+                error: const Color(0xFFE97152),
+                onError: AppColors.textPrimary,
+                errorContainer: const Color(0xFF351C18),
+                onErrorContainer: const Color(0xFFE97152),
+                tertiary: AppColors.accent,
+                onTertiary: AppColors.backgroundDark,
+                tertiaryContainer: AppColors.accent.withValues(alpha: 0.2),
+                onTertiaryContainer: AppColors.accent,
+                surfaceContainerLowest: AppColors.backgroundDark,
+                surfaceContainerLow: AppColors.surface,
+                surfaceContainer: AppColors.surface,
+                surfaceContainerHigh: AppColors.surface,
+                surfaceContainerHighest: AppColors.border,
+              );
+
+        return MaterialApp(
+          title: 'Bifrost',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: colorScheme,
-        scaffoldBackgroundColor: AppColors.backgroundDark,
+        scaffoldBackgroundColor: isTealTheme ? null : AppColors.backgroundDark,
 
         // ── Page transitions ────────────────────────────────────
         pageTransitionsTheme: PageTransitionsTheme(
@@ -250,6 +262,8 @@ class BifrostApp extends StatelessWidget {
         ),
       ),
       home: const HomePage(),
+        );
+      },
     );
   }
 }
