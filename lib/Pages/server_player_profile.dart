@@ -93,7 +93,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     for (final dynamic item in list) {
       if (item is Map<String, dynamic> && item['Slot'] == slotIndex) {
         final String fullId = item['id'] as String? ?? '';
-        if (fullId.isEmpty) return null;
+        if (fullId.isEmpty || fullId == 'minecraft:air') return null;
         final String cleanId = fullId.replaceFirst('minecraft:', '');
         
         final String displayName = cleanId
@@ -144,11 +144,84 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     return null;
   }
 
+  void _showEnderChestDialog(BuildContext context, String serverVersion) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        final ThemeData theme = Theme.of(context);
+        final ColorScheme colors = theme.colorScheme;
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: colors.surface,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Icon(
+                          Icons.shopping_bag_rounded,
+                          color: colors.primary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Ender Chest',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 9,
+                    crossAxisSpacing: 5,
+                    mainAxisSpacing: 5,
+                  ),
+                  itemCount: 27,
+                  itemBuilder: (BuildContext context, int index) {
+                    final _InventoryItem? item = _getEnderItem(index);
+                    return _InventorySlot(
+                      item: item,
+                      serverVersion: serverVersion,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
     final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+
+    final RegExp versionRegex = RegExp(r'^\d+\.\d+(?:\.\d+)?');
+    final String rawVersion = server?.version ?? '1.20.1';
+    final String serverVersion = versionRegex.firstMatch(rawVersion)?.group(0) ?? '1.20.1';
 
     final Map<String, dynamic>? stats = _playerData?['stats'] as Map<String, dynamic>?;
     final double healthVal = (stats?['health'] as num?)?.toDouble() ?? 20.0;
@@ -363,6 +436,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                       child: _InventorySlot(
                                         item: _getInventoryItem(103), // Helmet
                                         emptyIcon: Icons.hdr_strong_outlined,
+                                        serverVersion: serverVersion,
                                       ),
                                     ),
                                     const SizedBox(height: 5),
@@ -371,6 +445,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                       child: _InventorySlot(
                                         item: _getInventoryItem(102), // Chestplate
                                         emptyIcon: Icons.accessibility_new_rounded,
+                                        serverVersion: serverVersion,
                                       ),
                                     ),
                                     const SizedBox(height: 5),
@@ -379,6 +454,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                       child: _InventorySlot(
                                         item: _getInventoryItem(101), // Leggings
                                         emptyIcon: Icons.airline_seat_legroom_extra_rounded,
+                                        serverVersion: serverVersion,
                                       ),
                                     ),
                                     const SizedBox(height: 5),
@@ -387,6 +463,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                       child: _InventorySlot(
                                         item: _getInventoryItem(100), // Boots
                                         emptyIcon: Icons.roller_skating_outlined,
+                                        serverVersion: serverVersion,
                                       ),
                                     ),
                                   ],
@@ -394,7 +471,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                               ),
                               const Spacer(flex: 1),
                               
-                              // Center: Green Area showing Player Name and Full Body Avatar
+                              // Center: Green Area showing Player Name and 128x128 Head Avatar
                               Expanded(
                                 flex: 5,
                                 child: Container(
@@ -420,21 +497,23 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 8),
-                                      Expanded(
+                                      SizedBox(
+                                        width: 128,
+                                        height: 128,
                                         child: playerUuid != null && playerUuid.isNotEmpty
                                             ? Image.network(
-                                                'https://crafatar.com/renders/body/$playerUuid?scale=3&overlay',
+                                                'https://crafatar.com/avatars/$playerUuid?size=128&overlay',
                                                 fit: BoxFit.contain,
                                                 errorBuilder: (BuildContext context, Object error,
                                                     StackTrace? stackTrace) {
                                                   return Image.network(
-                                                    'https://minotar.net/armor/body/$_activePlayerName/100.png',
+                                                    'https://minotar.net/avatar/$_activePlayerName/128.png',
                                                     fit: BoxFit.contain,
                                                     errorBuilder: (BuildContext context, Object error,
                                                         StackTrace? stackTrace) {
                                                       return Center(
                                                         child: Icon(
-                                                          Icons.accessibility_new_rounded,
+                                                          Icons.face_outlined,
                                                           color: Colors.green.shade400,
                                                           size: 48,
                                                         ),
@@ -444,13 +523,13 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                                 },
                                               )
                                             : Image.network(
-                                                'https://minotar.net/armor/body/$_activePlayerName/100.png',
+                                                'https://minotar.net/avatar/$_activePlayerName/128.png',
                                                 fit: BoxFit.contain,
                                                 errorBuilder: (BuildContext context, Object error,
                                                     StackTrace? stackTrace) {
                                                   return Center(
                                                     child: Icon(
-                                                      Icons.accessibility_new_rounded,
+                                                      Icons.face_outlined,
                                                       color: Colors.green.shade400,
                                                       size: 48,
                                                     ),
@@ -464,17 +543,25 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                               ),
                               const Spacer(flex: 1),
                               
-                              // Right: Off-hand Slot aligned at the bottom (next to boots)
+                              // Right: Ender Chest Slot at the top, Off-hand Slot at the bottom
                               Expanded(
                                 flex: 1,
                                 child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.end,
                                   children: <Widget>[
+                                    AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _EnderChestSlot(
+                                        onTap: () => _showEnderChestDialog(context, serverVersion),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    const Spacer(),
                                     AspectRatio(
                                       aspectRatio: 1.0,
                                       child: _InventorySlot(
                                         item: _getInventoryItem(-106), // Off-hand
                                         emptyIcon: Icons.shield_outlined,
+                                        serverVersion: serverVersion,
                                       ),
                                     ),
                                   ],
@@ -501,7 +588,10 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                           itemCount: 27,
                           itemBuilder: (BuildContext context, int index) {
                             final _InventoryItem? item = _getInventoryItem(index + 9);
-                            return _InventorySlot(item: item);
+                            return _InventorySlot(
+                              item: item,
+                              serverVersion: serverVersion,
+                            );
                           },
                         ),
                         
@@ -522,45 +612,11 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                           itemCount: 9,
                           itemBuilder: (BuildContext context, int index) {
                             final _InventoryItem? item = _getInventoryItem(index);
-                            return _InventorySlot(item: item, isHotbar: true);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ---- Collapsible Ender Chest Grid ----
-                  _Panel(
-                    child: ExpansionTile(
-                      leading: Icon(Icons.shopping_bag_rounded, color: colors.primary),
-                      title: Text(
-                        'Ender Chest',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Collapsible inter-dimensional storage',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: const EdgeInsets.only(top: 12, bottom: 4),
-                      children: <Widget>[
-                        // 9x3 ender chest slots (0 to 26)
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 9,
-                            crossAxisSpacing: 5,
-                            mainAxisSpacing: 5,
-                          ),
-                          itemCount: 27,
-                          itemBuilder: (BuildContext context, int index) {
-                            final _InventoryItem? item = _getEnderItem(index);
-                            return _InventorySlot(item: item);
+                            return _InventorySlot(
+                              item: item,
+                              isHotbar: true,
+                              serverVersion: serverVersion,
+                            );
                           },
                         ),
                       ],
@@ -588,11 +644,17 @@ class _InventoryItem {
 }
 
 class _InventorySlot extends StatelessWidget {
-  const _InventorySlot({this.item, this.isHotbar = false, this.emptyIcon});
+  const _InventorySlot({
+    this.item,
+    this.isHotbar = false,
+    this.emptyIcon,
+    required this.serverVersion,
+  });
 
   final _InventoryItem? item;
   final bool isHotbar;
   final IconData? emptyIcon;
+  final String serverVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -626,34 +688,42 @@ class _InventorySlot extends StatelessWidget {
                 alignment: Alignment.center,
                 children: <Widget>[
                   Image.network(
-                    'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.20.1/items/${item!.cleanId}.png',
+                    'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/$serverVersion/items/${item!.cleanId}.png',
                     width: 28,
                     height: 28,
                     fit: BoxFit.contain,
                     errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
                       return Image.network(
-                        'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/${item!.cleanId}.png',
+                        'https://assets.mcasset.cloud/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
                         width: 28,
                         height: 28,
                         fit: BoxFit.contain,
                         errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                          return Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: item!.color.withValues(alpha: 0.7),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                item!.name[0],
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                          return Image.network(
+                            'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
+                            width: 28,
+                            height: 28,
+                            fit: BoxFit.contain,
+                            errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                              return Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: item!.color.withValues(alpha: 0.7),
+                                  shape: BoxShape.circle,
                                 ),
-                              ),
-                            ),
+                                child: Center(
+                                  child: Text(
+                                    item!.name.isNotEmpty ? item!.name[0] : '?',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                       );
@@ -681,6 +751,67 @@ class _InventorySlot extends StatelessWidget {
                     ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _EnderChestSlot extends StatelessWidget {
+  const _EnderChestSlot({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+
+    return Tooltip(
+      message: 'Ender Chest',
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+          border: Border.all(
+            color: colors.outlineVariant,
+            width: 1.0,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                Image.network(
+                  'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.20.1/items/ender_chest.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.contain,
+                  errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                    return Image.network(
+                      'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/ender_chest.png',
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.contain,
+                      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                        return Center(
+                          child: Icon(
+                            Icons.shopping_bag_rounded,
+                            size: 20,
+                            color: colors.primary,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
