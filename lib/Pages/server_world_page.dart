@@ -257,7 +257,7 @@ class _WorldPageState extends State<WorldPage> {
             physics: const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
-            childAspectRatio: 1.35,
+            childAspectRatio: 2.2,
             children: <Widget>[
               _WorldActionTile(
                 title: 'Download',
@@ -413,9 +413,8 @@ class _WorldActionTileState extends State<_WorldActionTile> {
           onTapUp: widget.enabled ? (_) => setState(() => _scale = 1.0) : null,
           onTapCancel: () => setState(() => _scale = 1.0),
           child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(12),
+            child: Row(
               children: <Widget>[
                 Container(
                   width: 36,
@@ -434,10 +433,32 @@ class _WorldActionTileState extends State<_WorldActionTile> {
                     size: 20,
                   ),
                 ),
-                const Spacer(),
-                Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
