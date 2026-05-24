@@ -48,6 +48,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Clear any stale notification from a previous crashed/swiped-away session
+        cancelNotification()
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "bifrost/storage_access",

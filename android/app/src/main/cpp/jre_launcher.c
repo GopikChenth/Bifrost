@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 #include <dirent.h>
 
@@ -562,6 +563,12 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     if (pid == 0) {
         /* ───── CHILD PROCESS ─────
          *
+         * Set parent-death signal so that this child process is automatically
+         * terminated when the parent Flutter process is killed.
+         */
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+        /*
          * GPU driver isolation for Android:
          *
          * The Flutter parent uses OpenGL (via Skia) for rendering,
