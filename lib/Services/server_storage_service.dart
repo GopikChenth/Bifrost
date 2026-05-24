@@ -1074,7 +1074,7 @@ class ServerStorageService {
             final double y = (posList[1] as num).toDouble();
             final double z = (posList[2] as num).toDouble();
             resultStats['coordinates'] =
-                '${x.toStringAsFixed(1)}, ${y.toStringAsFixed(1)}, ${z.toStringAsFixed(1)}';
+                '${x.round()}, ${y.round()}, ${z.round()}';
           }
 
           final dynamic inv = nbt['Inventory'];

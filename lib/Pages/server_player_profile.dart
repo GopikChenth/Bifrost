@@ -306,7 +306,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                               child: _StatTile(
                                 icon: Icons.favorite_rounded,
                                 label: 'Health',
-                                value: '${healthVal.toStringAsFixed(1)} / 20.0 HP',
+                                value: '${healthVal.round()} / 20 HP',
                               ),
                             ),
                             Expanded(
