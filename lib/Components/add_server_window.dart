@@ -6,6 +6,7 @@ import 'package:bifrost/Services/vanilla_jar_service.dart';
 import 'package:bifrost/Components/bifrost_bounce.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AddServerResult {
   const AddServerResult({
@@ -505,6 +506,9 @@ class _AddServerWindowState extends State<AddServerWindow> {
                         onChanged: _loadingRam
                             ? null
                             : (double value) {
+                                if (value != _allocatedRamMb) {
+                                  HapticFeedback.selectionClick();
+                                }
                                 setState(() {
                                   _allocatedRamMb = value;
                                 });

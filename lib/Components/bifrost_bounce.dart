@@ -1,5 +1,6 @@
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class BifrostBounce extends StatefulWidget {
   const BifrostBounce({
@@ -30,6 +31,7 @@ class _BifrostBounceState extends State<BifrostBounce> {
 
     return Listener(
       onPointerDown: (_) {
+        HapticFeedback.lightImpact();
         setState(() => _scale = widget.scaleFactor);
       },
       onPointerUp: (_) {

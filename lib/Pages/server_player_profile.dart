@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Components/player_profile_card.dart';
+import 'package:bifrost/Components/bifrost_bounce.dart';
 
 class PlayerProfilePage extends StatefulWidget {
   const PlayerProfilePage({
@@ -488,47 +490,53 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                         Row(
                           children: <Widget>[
                             Expanded(
-                              child: FilledButton.icon(
-                                onPressed: server != null && server.isOnline
-                                    ? () => _send(context, 'kill $_activePlayerName')
-                                    : null,
-                                icon: const Icon(Icons.dangerous_rounded, size: 18),
-                                label: const Text('Kill'),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: colors.errorContainer,
-                                  foregroundColor: colors.onErrorContainer,
-                                  padding: EdgeInsets.zero,
+                              child: BifrostBounce(
+                                child: FilledButton.icon(
+                                  onPressed: server != null && server.isOnline
+                                      ? () => _send(context, 'kill $_activePlayerName')
+                                      : null,
+                                  icon: const Icon(Icons.dangerous_rounded, size: 18),
+                                  label: const Text('Kill'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: colors.errorContainer,
+                                    foregroundColor: colors.onErrorContainer,
+                                    padding: EdgeInsets.zero,
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: FilledButton.icon(
-                                onPressed: server != null && server.isOnline
-                                    ? () => _send(
-                                          context,
-                                          'effect give $_activePlayerName instant_health 1 255 true',
-                                        )
-                                    : null,
-                                icon: const Icon(Icons.favorite_rounded, size: 18),
-                                label: const Text('Heal'),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: colors.primaryContainer,
-                                  foregroundColor: colors.onPrimaryContainer,
-                                  padding: EdgeInsets.zero,
+                              child: BifrostBounce(
+                                child: FilledButton.icon(
+                                  onPressed: server != null && server.isOnline
+                                      ? () => _send(
+                                            context,
+                                            'effect give $_activePlayerName instant_health 1 255 true',
+                                          )
+                                      : null,
+                                  icon: const Icon(Icons.favorite_rounded, size: 18),
+                                  label: const Text('Heal'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: colors.primaryContainer,
+                                    foregroundColor: colors.onPrimaryContainer,
+                                    padding: EdgeInsets.zero,
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: FilledButton.icon(
-                                onPressed: server != null && server.isOnline
-                                    ? () => _send(context, 'clear $_activePlayerName')
-                                    : null,
-                                icon: const Icon(Icons.inventory_2_rounded, size: 18),
-                                label: const Text('Clear Inv'),
-                                style: FilledButton.styleFrom(
-                                  padding: EdgeInsets.zero,
+                              child: BifrostBounce(
+                                child: FilledButton.icon(
+                                  onPressed: server != null && server.isOnline
+                                      ? () => _send(context, 'clear $_activePlayerName')
+                                      : null,
+                                  icon: const Icon(Icons.inventory_2_rounded, size: 18),
+                                  label: const Text('Clear Inv'),
+                                  style: FilledButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                  ),
                                 ),
                               ),
                             ),
@@ -663,6 +671,7 @@ class _InventorySlot extends StatelessWidget {
     
     return GestureDetector(
       onTap: () {
+        HapticFeedback.lightImpact();
         final String text = item != null ? '${item!.name} (x${item!.qty})' : 'Empty Slot';
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
