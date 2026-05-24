@@ -1,48 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:bifrost/Utils/app_colors.dart';
 
-class AppTheme {
-  static Color getThemeColor(String theme) {
-    if (theme == 'teal') return const Color(0xFF00838F);
-    if (theme == 'frost') return const Color(0xFF5F7082);
-    return const Color(0xFF52A435);
-  }
+/// The contract representing a modular theme in Bifrost.
+/// To add a new theme, simply implement this interface and register it in [AppTheme].
+abstract class BifrostTheme {
+  String get id;
+  String get name;
+  Color get previewColor;
+  Color? get scaffoldBackgroundColor;
+  ColorScheme get colorScheme;
+}
 
-  static ColorScheme getColorScheme(String currentTheme) {
-    final bool isTealTheme = currentTheme == 'teal';
-    final bool isFrostTheme = currentTheme == 'frost';
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Modules
+// ─────────────────────────────────────────────────────────────────────────────
 
-    if (isTealTheme) {
-      return ColorScheme.fromSeed(
-        seedColor: const Color(0xFF00838F),
-        brightness: Brightness.dark,
-      );
-    } else if (isFrostTheme) {
-      return const ColorScheme(
-        brightness: Brightness.dark,
-        primary: Color(0xFF8FA3B8),
-        onPrimary: Color(0xFF182B3D),
-        primaryContainer: Color(0xFF253D62),
-        onPrimaryContainer: Color(0xFFC1C1C1),
-        secondary: Color(0xFF5F7082),
-        onSecondary: Color(0xFF182B3D),
-        secondaryContainer: Color(0xFF253D62),
-        onSecondaryContainer: Color(0xFFC1C1C1),
-        surface: Color(0xFF182B3D),
-        onSurface: Color(0xFFC1C1C1),
-        onSurfaceVariant: Color(0xFF8FA3B8),
-        outline: Color(0xFF494D5F),
-        outlineVariant: Color(0xFF494D5F),
-        error: Color(0xFFE97152),
-        onError: Color(0xFFFFFFFF),
-        surfaceContainerLowest: Color(0xFF182B3D),
-        surfaceContainerLow: Color(0xFF253D62),
-        surfaceContainer: Color(0xFF253D62),
-        surfaceContainerHigh: Color(0xFF253D62),
-        surfaceContainerHighest: Color(0xFF494D5F),
-      );
-    } else {
-      return ColorScheme(
+/// 1. Premium Dark Theme Module
+class PremiumDarkTheme implements BifrostTheme {
+  @override
+  String get id => 'main';
+
+  @override
+  String get name => 'Premium Dark';
+
+  @override
+  Color get previewColor => const Color(0xFF52A435);
+
+  @override
+  Color? get scaffoldBackgroundColor => AppColors.backgroundDark;
+
+  @override
+  ColorScheme get colorScheme => ColorScheme(
         brightness: Brightness.dark,
         primary: AppColors.primary,
         onPrimary: AppColors.textPrimary,
@@ -71,18 +59,99 @@ class AppTheme {
         surfaceContainerHigh: AppColors.surface,
         surfaceContainerHighest: AppColors.border,
       );
-    }
+}
+
+/// 2. Classic Teal Theme Module
+class ClassicTealTheme implements BifrostTheme {
+  @override
+  String get id => 'teal';
+
+  @override
+  String get name => 'Classic Teal';
+
+  @override
+  Color get previewColor => const Color(0xFF00838F);
+
+  @override
+  Color? get scaffoldBackgroundColor => null; // Uses standard Material 3 teal scheme background
+
+  @override
+  ColorScheme get colorScheme => ColorScheme.fromSeed(
+        seedColor: const Color(0xFF00838F),
+        brightness: Brightness.dark,
+      );
+}
+
+/// 3. Frosty Ice Theme Module
+class FrostyIceTheme implements BifrostTheme {
+  @override
+  String get id => 'frost';
+
+  @override
+  String get name => 'Frosty Ice';
+
+  @override
+  Color get previewColor => const Color(0xFF5F7082);
+
+  @override
+  Color? get scaffoldBackgroundColor => const Color(0xFF182B3D);
+
+  @override
+  ColorScheme get colorScheme => const ColorScheme(
+        brightness: Brightness.dark,
+        primary: Color(0xFF8FA3B8),
+        onPrimary: Color(0xFF182B3D),
+        primaryContainer: Color(0xFF253D62),
+        onPrimaryContainer: Color(0xFFC1C1C1),
+        secondary: Color(0xFF5F7082),
+        onSecondary: Color(0xFF182B3D),
+        secondaryContainer: Color(0xFF253D62),
+        onSecondaryContainer: Color(0xFFC1C1C1),
+        surface: Color(0xFF182B3D),
+        onSurface: Color(0xFFC1C1C1),
+        onSurfaceVariant: Color(0xFF8FA3B8),
+        outline: Color(0xFF494D5F),
+        outlineVariant: Color(0xFF494D5F),
+        error: Color(0xFFE97152),
+        onError: Color(0xFFFFFFFF),
+        surfaceContainerLowest: Color(0xFF182B3D),
+        surfaceContainerLow: Color(0xFF253D62),
+        surfaceContainer: Color(0xFF253D62),
+        surfaceContainerHigh: Color(0xFF253D62),
+        surfaceContainerHighest: Color(0xFF494D5F),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme Engine & Registry
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppTheme {
+  /// The central registry of modular themes.
+  static final Map<String, BifrostTheme> _themes = {
+    'main': PremiumDarkTheme(),
+    'teal': ClassicTealTheme(),
+    'frost': FrostyIceTheme(),
+  };
+
+  /// Returns a list of all registered themes.
+  static List<BifrostTheme> get allThemes => _themes.values.toList();
+
+  /// Retrieves a registered theme by its unique identifier.
+  static BifrostTheme getTheme(String themeId) {
+    return _themes[themeId] ?? PremiumDarkTheme();
   }
 
-  static Color? getScaffoldBackgroundColor(String currentTheme) {
-    if (currentTheme == 'teal') return null;
-    if (currentTheme == 'frost') return const Color(0xFF182B3D);
-    return AppColors.backgroundDark;
+  /// Retrives a theme's key primary/accent color for preview rings.
+  static Color getThemeColor(String themeId) {
+    return getTheme(themeId).previewColor;
   }
 
-  static ThemeData buildTheme(String currentTheme) {
-    final ColorScheme colorScheme = getColorScheme(currentTheme);
-    final Color? scaffoldBackgroundColor = getScaffoldBackgroundColor(currentTheme);
+  /// Builds a complete material 3 [ThemeData] from a theme ID.
+  static ThemeData buildTheme(String themeId) {
+    final BifrostTheme theme = getTheme(themeId);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final Color? scaffoldBackgroundColor = theme.scaffoldBackgroundColor;
 
     return ThemeData(
       useMaterial3: true,
