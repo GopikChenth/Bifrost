@@ -424,35 +424,62 @@ class _SettingsPageState extends State<SettingsPage>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: SegmentedButton<String>(
-                              segments: const <ButtonSegment<String>>[
-                                ButtonSegment<String>(
-                                  value: 'main',
-                                  label: Text('Premium Dark'),
-                                  icon: Icon(Icons.palette_outlined, size: 18),
-                                ),
-                                ButtonSegment<String>(
-                                  value: 'teal',
-                                  label: Text('Classic Teal'),
-                                  icon: Icon(Icons.spa_outlined, size: 18),
-                                ),
-                              ],
-                              selected: <String>{_appTheme},
-                              onSelectionChanged: (Set<String> newSelection) {
-                                setState(() {
-                                  _appTheme = newSelection.first;
-                                });
-                              },
-                              showSelectedIcon: false,
-                              style: SegmentedButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                           Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _appTheme,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    labelText: 'Theme',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: const <DropdownMenuItem<String>>[
+                                    DropdownMenuItem<String>(
+                                      value: 'main',
+                                      child: Text('Premium Dark'),
+                                    ),
+                                    DropdownMenuItem<String>(
+                                      value: 'teal',
+                                      child: Text('Classic Teal'),
+                                    ),
+                                  ],
+                                  onChanged: (String? value) {
+                                    if (value != null) {
+                                      setState(() {
+                                        _appTheme = value;
+                                      });
+                                    }
+                                  },
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: _appTheme == 'main'
+                                      ? const Color(0xFF52A435)
+                                      : const Color(0xFF00838F),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: colors.outline,
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.2),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
