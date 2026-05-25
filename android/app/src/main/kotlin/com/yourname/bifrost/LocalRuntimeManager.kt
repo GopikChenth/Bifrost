@@ -29,6 +29,11 @@ class LocalRuntimeManager(
     private val serverState = AtomicReference("idle")
     private val lastMessage = AtomicReference<String?>(null)
 
+    @Volatile
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
+    @Volatile
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
     private val runtimeHome: File
         get() = BundledRuntimeCatalog.byJavaMajor(activeRuntimeMajor).installHome(runtimeRoot)
 
@@ -142,6 +147,9 @@ class LocalRuntimeManager(
         serverState.set("starting")
         lastMessage.set("Preparing the local runtime.")
 
+        // Keep CPU and WiFi awake when device sleeps
+        acquireLocks()
+
         val thread = Thread {
             try {
                 prepareBundledRuntimeHome(runtimeMajor)
@@ -208,6 +216,8 @@ class LocalRuntimeManager(
                 }
             } finally {
                 launchThread = null
+                // Release power/wifi locks on exit
+                releaseLocks()
             }
         }
         thread.name = "bifrost-local-server"
@@ -608,6 +618,72 @@ class LocalRuntimeManager(
                     else "Warning: unable to fully clean ${dir.absolutePath}",
                 )
             }
+        }
+    }
+
+    private fun acquireLocks() {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (wakeLock == null) {
+                wakeLock = powerManager.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "Bifrost::ServerWakeLock"
+                ).apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wakeLock?.acquire(1000 * 60 * 60 * 24L) // 24 hours fallback limit
+            Log.d(tag, "WakeLock acquired successfully.")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to acquire WakeLock", e)
+        }
+
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            if (wifiLock == null) {
+                wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    wifiManager.createWifiLock(
+                        3, // WifiManager.WIFI_MODE_FULL_HIGH_PERFORMANCE (API 29+)
+                        "Bifrost::ServerWifiLock"
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    wifiManager.createWifiLock(
+                        1, // WifiManager.WIFI_MODE_FULL
+                        "Bifrost::ServerWifiLock"
+                    )
+                }.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wifiLock?.acquire()
+            Log.d(tag, "WifiLock acquired successfully.")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to acquire WifiLock", e)
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(tag, "WakeLock released.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to release WakeLock", e)
+        }
+
+        try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(tag, "WifiLock released.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to release WifiLock", e)
         }
     }
 
