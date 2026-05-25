@@ -347,13 +347,41 @@ class LocalRuntimeManager(
             lastMessage.set("Minecraft server is online.")
         }
 
+        val memoryMb = getJVMProcessMemoryInfo().toInt()
+
         return mapOf(
             "state" to serverState.get(),
             "activeServerPath" to activeServerPath,
             "lastExitCode" to lastExitCode,
             "lastMessage" to lastMessage.get(),
             "consoleOutput" to LocalJvmBridge.getJVMOutput(),
+            "memoryUsageMb" to memoryMb,
         )
+    }
+
+    fun getJVMProcessMemoryInfo(): Long {
+        val pid = LocalJvmBridge.getJVMPid()
+        if (pid <= 0) return 0L
+        
+        return try {
+            val statmFile = File("/proc/$pid/statm")
+            if (statmFile.exists()) {
+                val content = statmFile.readText().trim()
+                val parts = content.split("\\s+".toRegex())
+                if (parts.size >= 2) {
+                    val rssPages = parts[1].toLongOrNull() ?: 0L
+                    val pageSize = 4096L // standard page size on Android (4KB)
+                    (rssPages * pageSize) / (1024L * 1024L) // MB
+                } else {
+                    0L
+                }
+            } else {
+                0L
+            }
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to read statm for PID $pid", e)
+            0L
+        }
     }
 
     private fun computeSafeMaxRam(requestedMb: Int): Int {

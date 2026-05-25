@@ -684,6 +684,16 @@ Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
     return active_jvm_ready == 1 ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_getJVMPid(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+    return (jint) active_jvm_pid;
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_yourname_bifrost_LocalJvmBridge_getJVMOutput(
     JNIEnv* env,

@@ -62,6 +62,7 @@ class LocalServerStatus {
     required this.lastExitCode,
     required this.lastMessage,
     required this.consoleOutput,
+    required this.memoryUsageMb,
   });
 
   final String state;
@@ -69,6 +70,7 @@ class LocalServerStatus {
   final int? lastExitCode;
   final String? lastMessage;
   final String consoleOutput;
+  final int memoryUsageMb;
 
   bool get isBusy =>
       state == 'starting' || state == 'stopping';
@@ -80,6 +82,7 @@ class LocalServerStatus {
       lastExitCode: map['lastExitCode'] as int?,
       lastMessage: map['lastMessage'] as String?,
       consoleOutput: map['consoleOutput'] as String? ?? '',
+      memoryUsageMb: map['memoryUsageMb'] as int? ?? 0,
     );
   }
 }

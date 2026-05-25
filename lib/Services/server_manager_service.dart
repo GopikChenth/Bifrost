@@ -69,6 +69,7 @@ class ServerManagerService extends ChangeNotifier {
   DateTime _lastProgressNotify = DateTime(0);
 
   final Map<String, Set<String>> _onlinePlayersByServerPath = <String, Set<String>>{};
+  final Map<String, int> _serverMemoryUsageMb = <String, int>{};
   final Map<String, int> _playtimeSecondsByServerPath = <String, int>{};
   final Map<String, DateTime?> _lastSyncTimeByServerPath = <String, DateTime?>{};
   bool _isSyncing = false;
@@ -156,6 +157,10 @@ class ServerManagerService extends ChangeNotifier {
 
   DateTime? lastSyncTimeFor(String serverPath) {
     return _lastSyncTimeByServerPath[serverPath];
+  }
+
+  int memoryUsageFor(String serverPath) {
+    return _serverMemoryUsageMb[serverPath] ?? 0;
   }
 
 
@@ -910,6 +915,7 @@ class ServerManagerService extends ChangeNotifier {
       runtimeMessage: status.lastMessage ?? fallbackMessage,
       isBusy: status.isBusy,
     );
+    _serverMemoryUsageMb[serverPath] = status.memoryUsageMb;
     if (status.consoleOutput.trim().isNotEmpty) {
       _consoleOutputByServerPath[serverPath] = _capConsoleOutput(
         status.consoleOutput,

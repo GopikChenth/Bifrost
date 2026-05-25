@@ -17,6 +17,8 @@ object LocalJvmBridge {
 
     external fun isJVMReady(): Boolean
 
+    external fun getJVMPid(): Int
+
     external fun getJVMOutput(): String
 
     external fun setLdLibraryPath(ldLibraryPath: String)

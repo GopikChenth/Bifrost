@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bifrost/Components/eulawindow.dart';
@@ -35,6 +36,7 @@ class _ServerPageState extends State<ServerPage>
   late final AnimationController _entranceController;
   int? _pressedButtonIndex;
   late final List<double> _activeProgresses;
+  Timer? _refreshTimer;
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
@@ -82,6 +84,12 @@ class _ServerPageState extends State<ServerPage>
     ];
     widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final BifrostServer? s = widget.serverManager.serverByPath(widget.serverPath);
+      if (s != null && (s.isOnline || s.isBusy)) {
+        widget.serverManager.refreshServerStatusFor(widget.serverPath);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (AppSettings.disableAnimations) {
         _entranceController.value = 1.0;
@@ -162,6 +170,7 @@ class _ServerPageState extends State<ServerPage>
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _entranceController.dispose();
     widget.serverManager.removeListener(_refresh);
     super.dispose();
@@ -407,7 +416,10 @@ class _ServerPageState extends State<ServerPage>
           _staggeredChild(
             3,
             totalSections,
-            _ServerDetailsPanel(server: server),
+            _ServerDetailsPanel(
+              server: server,
+              serverManager: widget.serverManager,
+            ),
           ),
           const SizedBox(height: 12),
           _staggeredChild(
@@ -601,14 +613,30 @@ class _LocalNetworkPanel extends StatelessWidget {
 }
 
 class _ServerDetailsPanel extends StatelessWidget {
-  const _ServerDetailsPanel({required this.server});
+  const _ServerDetailsPanel({
+    required this.server,
+    required this.serverManager,
+  });
 
   final BifrostServer server;
+  final ServerManagerService serverManager;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
+
+    final int memoryMb = serverManager.memoryUsageFor(server.path);
+    final String ramText = server.isOnline
+        ? (memoryMb > 0 ? '$memoryMb MB' : 'Querying...')
+        : 'Offline';
+
+    final List<String> onlinePlayers = serverManager.onlinePlayersFor(server.path);
+    final String playersText = server.isOnline
+        ? (onlinePlayers.isEmpty
+            ? '0 online'
+            : '${onlinePlayers.length} online (${onlinePlayers.join(", ")})')
+        : 'Offline';
 
     Widget buildItem(IconData icon, String label, String value) {
       return Row(
@@ -662,9 +690,9 @@ class _ServerDetailsPanel extends StatelessWidget {
                     children: <Widget>[
                       buildItem(Icons.dns_rounded, 'Server Type', server.type),
                       const SizedBox(height: 10),
-                      buildItem(Icons.groups_rounded, 'Players Online', 'Not tracked'),
+                      buildItem(Icons.groups_rounded, 'Players Online', playersText),
                       const SizedBox(height: 10),
-                      buildItem(Icons.speed_rounded, 'RAM Usage', 'Pending'),
+                      buildItem(Icons.speed_rounded, 'RAM Usage', ramText),
                       const SizedBox(height: 10),
                       buildItem(Icons.power_settings_new_rounded, 'Runtime State', server.status),
                     ],
@@ -699,7 +727,7 @@ class _ServerDetailsPanel extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
-                    Expanded(child: buildItem(Icons.groups_rounded, 'Players', 'Not tracked')),
+                    Expanded(child: buildItem(Icons.groups_rounded, 'Players', playersText)),
                     const SizedBox(width: 10),
                     Expanded(child: buildItem(Icons.memory_rounded, 'Allocated RAM', server.memoryLabel)),
                   ],
@@ -707,7 +735,7 @@ class _ServerDetailsPanel extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
-                    Expanded(child: buildItem(Icons.speed_rounded, 'RAM Usage', 'Pending')),
+                    Expanded(child: buildItem(Icons.speed_rounded, 'RAM Usage', ramText)),
                     const SizedBox(width: 10),
                     Expanded(child: buildItem(Icons.terminal_rounded, 'Console', server.consoleLabel)),
                   ],
