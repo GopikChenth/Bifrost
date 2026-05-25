@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 #include <dirent.h>
 
@@ -562,6 +563,12 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
     if (pid == 0) {
         /* ───── CHILD PROCESS ─────
          *
+         * Set parent-death signal so that this child process is automatically
+         * terminated when the parent Flutter process is killed.
+         */
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+        /*
          * GPU driver isolation for Android:
          *
          * The Flutter parent uses OpenGL (via Skia) for rendering,
@@ -675,6 +682,16 @@ Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
     (void) env;
     (void) clazz;
     return active_jvm_ready == 1 ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourname_bifrost_LocalJvmBridge_getJVMPid(
+    JNIEnv* env,
+    jclass clazz
+) {
+    (void) env;
+    (void) clazz;
+    return (jint) active_jvm_pid;
 }
 
 JNIEXPORT jstring JNICALL

@@ -29,6 +29,11 @@ class LocalRuntimeManager(
     private val serverState = AtomicReference("idle")
     private val lastMessage = AtomicReference<String?>(null)
 
+    @Volatile
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
+    @Volatile
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
     private val runtimeHome: File
         get() = BundledRuntimeCatalog.byJavaMajor(activeRuntimeMajor).installHome(runtimeRoot)
 
@@ -142,6 +147,9 @@ class LocalRuntimeManager(
         serverState.set("starting")
         lastMessage.set("Preparing the local runtime.")
 
+        // Keep CPU and WiFi awake when device sleeps
+        acquireLocks()
+
         val thread = Thread {
             try {
                 prepareBundledRuntimeHome(runtimeMajor)
@@ -208,6 +216,8 @@ class LocalRuntimeManager(
                 }
             } finally {
                 launchThread = null
+                // Release power/wifi locks on exit
+                releaseLocks()
             }
         }
         thread.name = "bifrost-local-server"
@@ -337,13 +347,41 @@ class LocalRuntimeManager(
             lastMessage.set("Minecraft server is online.")
         }
 
+        val memoryMb = getJVMProcessMemoryInfo().toInt()
+
         return mapOf(
             "state" to serverState.get(),
             "activeServerPath" to activeServerPath,
             "lastExitCode" to lastExitCode,
             "lastMessage" to lastMessage.get(),
             "consoleOutput" to LocalJvmBridge.getJVMOutput(),
+            "memoryUsageMb" to memoryMb,
         )
+    }
+
+    fun getJVMProcessMemoryInfo(): Long {
+        val pid = LocalJvmBridge.getJVMPid()
+        if (pid <= 0) return 0L
+        
+        return try {
+            val statmFile = File("/proc/$pid/statm")
+            if (statmFile.exists()) {
+                val content = statmFile.readText().trim()
+                val parts = content.split("\\s+".toRegex())
+                if (parts.size >= 2) {
+                    val rssPages = parts[1].toLongOrNull() ?: 0L
+                    val pageSize = 4096L // standard page size on Android (4KB)
+                    (rssPages * pageSize) / (1024L * 1024L) // MB
+                } else {
+                    0L
+                }
+            } else {
+                0L
+            }
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to read statm for PID $pid", e)
+            0L
+        }
     }
 
     private fun computeSafeMaxRam(requestedMb: Int): Int {
@@ -608,6 +646,72 @@ class LocalRuntimeManager(
                     else "Warning: unable to fully clean ${dir.absolutePath}",
                 )
             }
+        }
+    }
+
+    private fun acquireLocks() {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (wakeLock == null) {
+                wakeLock = powerManager.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "Bifrost::ServerWakeLock"
+                ).apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wakeLock?.acquire(1000 * 60 * 60 * 24L) // 24 hours fallback limit
+            Log.d(tag, "WakeLock acquired successfully.")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to acquire WakeLock", e)
+        }
+
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            if (wifiLock == null) {
+                wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    wifiManager.createWifiLock(
+                        3, // WifiManager.WIFI_MODE_FULL_HIGH_PERFORMANCE (API 29+)
+                        "Bifrost::ServerWifiLock"
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    wifiManager.createWifiLock(
+                        1, // WifiManager.WIFI_MODE_FULL
+                        "Bifrost::ServerWifiLock"
+                    )
+                }.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wifiLock?.acquire()
+            Log.d(tag, "WifiLock acquired successfully.")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to acquire WifiLock", e)
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(tag, "WakeLock released.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to release WakeLock", e)
+        }
+
+        try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(tag, "WifiLock released.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to release WifiLock", e)
         }
     }
 
