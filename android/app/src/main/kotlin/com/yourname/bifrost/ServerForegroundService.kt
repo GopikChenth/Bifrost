@@ -38,7 +38,15 @@ class ServerForegroundService : Service() {
         val status = intent?.getStringExtra("status") ?: "Offline"
 
         val notification = createNotification(name, type, version, status)
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         return START_NOT_STICKY
     }

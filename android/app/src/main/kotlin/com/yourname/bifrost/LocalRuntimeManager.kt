@@ -651,7 +651,7 @@ class LocalRuntimeManager(
 
     private fun acquireLocks() {
         try {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val powerManager = context.applicationContext.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (wakeLock == null) {
                 wakeLock = powerManager.newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK,

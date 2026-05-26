@@ -46,6 +46,7 @@ class SettingsRepository {
   static const String _customDirectoryPathKey = 'custom_server_directory_path';
   static const String _disableAnimationsKey = 'disable_animations';
   static const String _appThemeKey = 'app_theme';
+  static const String _onboardingCompletedKey = 'onboarding_completed';
 
   Future<ServerDirectorySettings> loadServerDirectorySettings() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -92,5 +93,15 @@ class SettingsRepository {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
     await preferences.setString(_appThemeKey, value);
     AppSettings.themeNotifier.value = value;
+  }
+
+  Future<bool> loadOnboardingCompleted() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_onboardingCompletedKey) ?? false;
+  }
+
+  Future<void> saveOnboardingCompleted(bool value) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_onboardingCompletedKey, value);
   }
 }

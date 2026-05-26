@@ -69,6 +69,7 @@ class ServerManagerService extends ChangeNotifier {
   DateTime _lastProgressNotify = DateTime(0);
 
   final Map<String, Set<String>> _onlinePlayersByServerPath = <String, Set<String>>{};
+  static final RegExp _ansiEscapePattern = RegExp(r'\x1B\[[0-9;]*[a-zA-Z]');
   final Map<String, int> _serverMemoryUsageMb = <String, int>{};
   final Map<String, int> _playtimeSecondsByServerPath = <String, int>{};
   final Map<String, DateTime?> _lastSyncTimeByServerPath = <String, DateTime?>{};
@@ -421,6 +422,7 @@ class ServerManagerService extends ChangeNotifier {
       return;
     }
 
+    _onlinePlayersByServerPath[server.path] = <String>{};
     await _saveLastStartedServerPath(server.path);
     _updateNativeNotification(server);
 
@@ -487,6 +489,7 @@ class ServerManagerService extends ChangeNotifier {
       return;
     }
 
+    _onlinePlayersByServerPath[server.path] = <String>{};
     _updateServer(
       server.path,
       isBusy: true,
@@ -931,24 +934,38 @@ class ServerManagerService extends ChangeNotifier {
       () => <String>{},
     );
 
-    final RegExp joinPattern = RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b');
-    final RegExp leavePattern = RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b');
+    final Set<String> previousOnline = Set<String>.from(online);
+
+    final RegExp joinPattern = RegExp(
+      r'(?:\]:\s+|\]\s+|^)([A-Za-z0-9_\.\*\-\s]{3,24})\s+joined the game\b',
+      caseSensitive: false,
+    );
+    final RegExp leavePattern = RegExp(
+      r'(?:\]:\s+|\]\s+|^)([A-Za-z0-9_\.\*\-\s]{3,24})\s+left the game\b',
+      caseSensitive: false,
+    );
 
     for (final String line in consoleOutput.split('\n')) {
-      final RegExpMatch? joinMatch = joinPattern.firstMatch(line);
+      final String cleanLine = line.replaceAll(_ansiEscapePattern, '').replaceAll('\r', '');
+      final RegExpMatch? joinMatch = joinPattern.firstMatch(cleanLine);
       if (joinMatch != null) {
         final String? player = joinMatch.group(1);
         if (player != null && player.trim().isNotEmpty) {
           online.add(player.trim());
         }
       }
-      final RegExpMatch? leaveMatch = leavePattern.firstMatch(line);
+      final RegExpMatch? leaveMatch = leavePattern.firstMatch(cleanLine);
       if (leaveMatch != null) {
         final String? player = leaveMatch.group(1);
         if (player != null && player.trim().isNotEmpty) {
           online.remove(player.trim());
         }
       }
+    }
+
+    if (online.length != previousOnline.length ||
+        !online.containsAll(previousOnline)) {
+      notifyListeners();
     }
   }
 
@@ -964,9 +981,18 @@ class ServerManagerService extends ChangeNotifier {
   }
 
   static final List<RegExp> _playerPatterns = <RegExp>[
-    RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) joined the game\b'),
-    RegExp(r'\]:\s+([A-Za-z0-9_]{3,16}) left the game\b'),
-    RegExp(r'UUID of player ([A-Za-z0-9_]{3,16}) is\b'),
+    RegExp(
+      r'(?:\]:\s+|\]\s+|^)([A-Za-z0-9_\.\*\-\s]{3,24})\s+joined the game\b',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'(?:\]:\s+|\]\s+|^)([A-Za-z0-9_\.\*\-\s]{3,24})\s+left the game\b',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\bUUID of player ([A-Za-z0-9_\.\*\-]{3,24})\b',
+      caseSensitive: false,
+    ),
   ];
 
   void _rememberPlayersFromConsole(String serverPath, String consoleOutput) {
@@ -975,14 +1001,22 @@ class ServerManagerService extends ChangeNotifier {
       () => <String>{},
     );
 
+    final Set<String> previousPlayers = Set<String>.from(players);
+
     for (final String line in consoleOutput.split('\n')) {
+      final String cleanLine = line.replaceAll(_ansiEscapePattern, '').replaceAll('\r', '');
       for (final RegExp pattern in _playerPatterns) {
-        final String? player = pattern.firstMatch(line)?.group(1);
+        final String? player = pattern.firstMatch(cleanLine)?.group(1);
         if (player != null && player.trim().isNotEmpty) {
           players.add(player.trim());
           break;
         }
       }
+    }
+
+    if (players.length != previousPlayers.length ||
+        !players.containsAll(previousPlayers)) {
+      notifyListeners();
     }
   }
 

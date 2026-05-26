@@ -6,6 +6,7 @@ import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_card.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Pages/server_page.dart';
+import 'package:bifrost/Components/onboarding_bottom_sheet.dart';
 import 'package:bifrost/Pages/bifrost_setting_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
@@ -40,6 +41,9 @@ class _HomePageState extends State<HomePage>
           _staggerController.forward();
         }
       }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      OnboardingBottomSheet.showIfNeeded(context);
     });
   }
 

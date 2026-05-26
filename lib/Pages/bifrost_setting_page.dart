@@ -1,4 +1,6 @@
+import 'package:bifrost/Components/onboarding_bottom_sheet.dart';
 import 'package:bifrost/Components/theme.dart';
+import 'package:bifrost/Services/battery_optimization_service.dart';
 import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:file_picker/file_picker.dart';
@@ -16,12 +18,17 @@ class _SettingsPageState extends State<SettingsPage>
   final SettingsRepository _settingsRepository = const SettingsRepository();
   final ServerStorageService _serverStorageService =
       const ServerStorageService();
+  final BatteryOptimizationService _batteryOptimizationService =
+      const BatteryOptimizationService();
   final TextEditingController _customPathController = TextEditingController();
 
   bool _isLoading = true;
   bool _useDefaultDirectory = true;
   bool _hasAllFilesAccess = false;
+  bool _isBatteryOptimizationIgnored = false;
   bool _disableAnimations = false;
+  bool _isAggressiveOem = false;
+  String _deviceManufacturer = '';
   String _appTheme = 'main';
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
@@ -49,9 +56,13 @@ class _SettingsPageState extends State<SettingsPage>
 
   Future<void> _refreshPermissionStatus() async {
     final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
-    if (mounted && hasAccess != _hasAllFilesAccess) {
+    final bool isBatteryExempt =
+        await _batteryOptimizationService.isIgnoringBatteryOptimizations();
+    if (mounted && (hasAccess != _hasAllFilesAccess ||
+        isBatteryExempt != _isBatteryOptimizationIgnored)) {
       setState(() {
         _hasAllFilesAccess = hasAccess;
+        _isBatteryOptimizationIgnored = isBatteryExempt;
       });
     }
   }
@@ -63,8 +74,22 @@ class _SettingsPageState extends State<SettingsPage>
       final String resolvedDirectoryPath = await _serverStorageService
           .resolveBaseDirectoryPath();
       final bool hasAccess = await _serverStorageService.hasAllFilesAccess();
+      final bool isBatteryExempt =
+          await _batteryOptimizationService.isIgnoringBatteryOptimizations();
       final bool disableAnimations = await _settingsRepository.loadDisableAnimations();
       final String appTheme = await _settingsRepository.loadAppTheme();
+
+      final String manufacturer = await _batteryOptimizationService.getDeviceManufacturer();
+      final String lowerMan = manufacturer.toLowerCase();
+      final bool isAggressive = lowerMan.contains('oneplus') ||
+          lowerMan.contains('oppo') ||
+          lowerMan.contains('realme') ||
+          lowerMan.contains('xiaomi') ||
+          lowerMan.contains('redmi') ||
+          lowerMan.contains('poco') ||
+          lowerMan.contains('huawei') ||
+          lowerMan.contains('honor') ||
+          lowerMan.contains('vivo');
 
       if (!mounted) return;
 
@@ -73,8 +98,11 @@ class _SettingsPageState extends State<SettingsPage>
         _customPathController.text = settings.customDirectoryPath;
         _resolvedDirectoryPath = resolvedDirectoryPath;
         _hasAllFilesAccess = hasAccess;
+        _isBatteryOptimizationIgnored = isBatteryExempt;
         _disableAnimations = disableAnimations;
         _appTheme = appTheme;
+        _deviceManufacturer = manufacturer;
+        _isAggressiveOem = isAggressive;
         _statusMessage = null;
       });
     } catch (_) {
@@ -104,6 +132,18 @@ class _SettingsPageState extends State<SettingsPage>
       if (mounted) {
         setState(() {
           _statusMessage = 'Unable to open storage permission settings.';
+        });
+      }
+    }
+  }
+
+  Future<void> _requestIgnoreBatteryOptimizations() async {
+    try {
+      await _batteryOptimizationService.requestIgnoreBatteryOptimizations();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Unable to open battery optimization settings.';
         });
       }
     }
@@ -273,6 +313,136 @@ class _SettingsPageState extends State<SettingsPage>
                           ),
                           const Divider(height: 24, thickness: 0.5),
 
+                          // ---- Battery Optimization ----
+                          Row(
+                            children: <Widget>[
+                              Icon(
+                                _isBatteryOptimizationIgnored
+                                    ? Icons.check_circle_rounded
+                                    : Icons.warning_amber_rounded,
+                                color: _isBatteryOptimizationIgnored
+                                    ? colors.primary
+                                    : colors.error,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      'Battery Optimization',
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _isBatteryOptimizationIgnored
+                                          ? 'Exempt (prevents server disconnection when phone sleeps)'
+                                          : 'Restricted (server may disconnect when phone sleeps)',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (_isBatteryOptimizationIgnored)
+                                Text(
+                                  'Exempt',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              else
+                                TextButton(
+                                  onPressed: _requestIgnoreBatteryOptimizations,
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text('Exempt'),
+                                ),
+                            ],
+                          ),
+                          if (_isAggressiveOem) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: colors.errorContainer.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: colors.error.withValues(alpha: 0.3),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    children: <Widget>[
+                                      Icon(
+                                        Icons.warning_rounded,
+                                        color: colors.error,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '$_deviceManufacturer Device Detected',
+                                          style: theme.textTheme.labelMedium?.copyWith(
+                                            color: colors.error,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '$_deviceManufacturer devices aggressively restrict background processes in sleep. To prevent server disconnection:\n'
+                                    '1. Tap "Go to App Info" below, go to "Battery" or "Battery usage", and choose "Unrestricted" or enable "Allow background activity".\n'
+                                    '2. In phone settings, go to "Battery" -> "More/Advanced settings" -> disable "Sleep standby optimization".',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colors.onErrorContainer,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextButton.icon(
+                                    onPressed: () async {
+                                      try {
+                                        await _batteryOptimizationService.openAppDetailsSettings();
+                                      } catch (e) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: ${e.toString()}')),
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(Icons.info_outline_rounded, size: 16),
+                                    label: const Text('Go to App Info'),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const Divider(height: 24, thickness: 0.5),
+
                           // ---- Server Directory ----
                           Text(
                             'Server Storage',
@@ -405,6 +575,27 @@ class _SettingsPageState extends State<SettingsPage>
                                 _disableAnimations = value;
                               });
                               _saveSettingsQuietly();
+                            },
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('Run startup guide'),
+                            subtitle: const Text(
+                              'Configure storage and battery optimization settings',
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                            ),
+                            onTap: () {
+                              showModalBottomSheet<void>(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (BuildContext context) =>
+                                    const OnboardingBottomSheet(),
+                              ).then((_) => _refreshPermissionStatus());
                             },
                           ),
                           const Divider(height: 24, thickness: 0.5),

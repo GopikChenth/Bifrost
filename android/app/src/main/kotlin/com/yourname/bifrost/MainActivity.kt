@@ -61,6 +61,11 @@ class MainActivity : FlutterActivity() {
             "bifrost/file_manager",
         ).setMethodCallHandler(::handleFileManagerMethodCall)
 
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "bifrost/battery_optimization",
+        ).setMethodCallHandler(::handleBatteryOptimizationMethodCall)
+
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "bifrost/local_runtime",
@@ -171,6 +176,72 @@ class MainActivity : FlutterActivity() {
             result.error(
                 "STORAGE_ACCESS_FAILED",
                 error.localizedMessage ?: "Storage access operation failed.",
+                null,
+            )
+        }
+    }
+
+    private fun handleBatteryOptimizationMethodCall(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            when (call.method) {
+                "isIgnoringBatteryOptimizations" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                        result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "requestIgnoreBatteryOptimizations" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        try {
+                            val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(intent)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            Log.e("Bifrost", "Failed to request ignore battery optimization directly", e)
+                            // Fallback to opening settings page generally
+                            val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(intent)
+                            result.success(null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
+                }
+                "getDeviceManufacturer" -> {
+                    result.success(android.os.Build.MANUFACTURER)
+                }
+                "openAppDetailsSettings" -> {
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:$packageName")
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(intent)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error(
+                            "SETTING_FAILED",
+                            e.localizedMessage ?: "Failed to open app details settings.",
+                            null
+                        )
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        } catch (error: Exception) {
+            result.error(
+                "BATTERY_OPTIMIZATION_FAILED",
+                error.localizedMessage ?: "Battery optimization operation failed.",
                 null,
             )
         }
