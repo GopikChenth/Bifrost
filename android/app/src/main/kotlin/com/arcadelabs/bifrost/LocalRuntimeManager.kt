@@ -1,4 +1,4 @@
-package com.yourname.bifrost
+package com.arcadelabs.bifrost
 
 import android.app.ActivityManager
 import android.content.Context
@@ -197,11 +197,11 @@ class LocalRuntimeManager(
                      * shutdown cleanup). If world data was already saved,
                      * this is harmless — report it as an error but don't
                      * alarm the user with a crash dialog. */
-                    serverState.set("error")
-                    lastMessage.set(
+                     serverState.set("error")
+                     lastMessage.set(
                         "Server process was killed by a signal (code $exitCode). " +
                             "World data was saved before shutdown.",
-                    )
+                     )
                 } else {
                     serverState.set(if (exitCode == 0) "stopped" else "error")
                     lastMessage.set("Server exited with code $exitCode.")
@@ -362,7 +362,7 @@ class LocalRuntimeManager(
     fun getJVMProcessMemoryInfo(): Long {
         val pid = LocalJvmBridge.getJVMPid()
         if (pid <= 0) return 0L
-        
+
         return try {
             val statmFile = File("/proc/$pid/statm")
             if (statmFile.exists()) {
@@ -714,5 +714,4 @@ class LocalRuntimeManager(
             Log.e(tag, "Failed to release WifiLock", e)
         }
     }
-
 }

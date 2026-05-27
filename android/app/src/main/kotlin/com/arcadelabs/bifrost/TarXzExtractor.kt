@@ -1,4 +1,4 @@
-package com.yourname.bifrost
+package com.arcadelabs.bifrost
 
 import org.tukaani.xz.XZInputStream
 import java.io.BufferedInputStream

@@ -1,4 +1,4 @@
-package com.yourname.bifrost
+package com.arcadelabs.bifrost
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -29,8 +29,8 @@ class MainActivity : FlutterActivity() {
 
     private val CHANNEL_ID = "bifrost_server_status"
     private val NOTIFICATION_ID = 4554
-    private val ACTION_START = "com.yourname.bifrost.ACTION_START"
-    private val ACTION_STOP = "com.yourname.bifrost.ACTION_STOP"
+    private val ACTION_START = "com.arcadelabs.bifrost.ACTION_START"
+    private val ACTION_STOP = "com.arcadelabs.bifrost.ACTION_STOP"
 
     private var lastNotificationName: String? = null
     private var lastNotificationType: String? = null

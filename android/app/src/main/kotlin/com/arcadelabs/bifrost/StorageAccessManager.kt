@@ -1,4 +1,4 @@
-package com.yourname.bifrost
+package com.arcadelabs.bifrost
 
 import android.content.Intent
 import android.net.Uri

@@ -30,7 +30,7 @@ void free_char_array(JNIEnv* env, jobjectArray jstringArray, const char** charAr
 }
 
 JNIEXPORT void JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_setLdLibraryPath(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_setLdLibraryPath(
     JNIEnv* env,
     jclass clazz,
     jstring ldLibraryPath
@@ -53,7 +53,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_setLdLibraryPath(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_dlopen(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_dlopen(
     JNIEnv* env,
     jclass clazz,
     jstring name
@@ -70,7 +70,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_dlopen(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_chdir(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_chdir(
     JNIEnv* env,
     jclass clazz,
     jstring nameStr

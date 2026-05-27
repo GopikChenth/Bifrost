@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "653767607012",
+    "project_id": "bifrost-3e63a",
+    "storage_bucket": "bifrost-3e63a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:653767607012:android:2bb43c1c9d3c5ba6c862f1",
+        "android_client_info": {
+          "package_name": "com.arcadelabs.bifrost"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "653767607012-a5r69b4o81co56lvc7iudhg6er68nh98.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.arcadelabs.bifrost",
+            "certificate_hash": "9a309049b93e06e8fa822c4d3ec30dde3bb47ee1"
+          }
+        },
+        {
+          "client_id": "653767607012-u2rcpp3mjclicjfnkb5h5jt9l1palksn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNn7CaVtfPFfX5WUAhAg3wONwP6qSmaQQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "653767607012-u2rcpp3mjclicjfnkb5h5jt9l1palksn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

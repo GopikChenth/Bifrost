@@ -495,7 +495,7 @@ static jint launch_jvm_child(int argc, char** argv) {
  * ────────────────────────────────────────────────────────────────── */
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_launchJVM(
     JNIEnv* env,
     jclass clazz,
     jobjectArray argsArray
@@ -675,7 +675,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_launchJVM(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_isJVMReady(
     JNIEnv* env,
     jclass clazz
 ) {
@@ -685,7 +685,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_isJVMReady(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_getJVMPid(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_getJVMPid(
     JNIEnv* env,
     jclass clazz
 ) {
@@ -695,7 +695,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_getJVMPid(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_getJVMOutput(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_getJVMOutput(
     JNIEnv* env,
     jclass clazz
 ) {
@@ -707,7 +707,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_getJVMOutput(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_stopJVM(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_stopJVM(
     JNIEnv* env,
     jclass clazz
 ) {
@@ -732,7 +732,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_stopJVM(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_sendJVMCommand(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_sendJVMCommand(
     JNIEnv* env,
     jclass clazz,
     jstring commandString
@@ -774,7 +774,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_sendJVMCommand(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_terminateJVM(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_terminateJVM(
     JNIEnv* env,
     jclass clazz
 ) {
@@ -797,7 +797,7 @@ Java_com_yourname_bifrost_LocalJvmBridge_terminateJVM(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_yourname_bifrost_LocalJvmBridge_forceStopJVM(
+Java_com_arcadelabs_bifrost_LocalJvmBridge_forceStopJVM(
     JNIEnv* env,
     jclass clazz
 ) {

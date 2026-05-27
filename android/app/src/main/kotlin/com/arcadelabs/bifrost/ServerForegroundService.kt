@@ -1,4 +1,4 @@
-package com.yourname.bifrost
+package com.arcadelabs.bifrost
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -70,7 +70,7 @@ class ServerForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val stopIntent = Intent("com.yourname.bifrost.ACTION_STOP").apply {
+        val stopIntent = Intent("com.arcadelabs.bifrost.ACTION_STOP").apply {
             `package` = packageName
         }
         val stopPendingIntent = PendingIntent.getBroadcast(
@@ -80,7 +80,7 @@ class ServerForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val startIntent = Intent("com.yourname.bifrost.ACTION_START").apply {
+        val startIntent = Intent("com.arcadelabs.bifrost.ACTION_START").apply {
             `package` = packageName
         }
         val startPendingIntent = PendingIntent.getBroadcast(
