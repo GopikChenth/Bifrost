@@ -111,7 +111,8 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
       if (server != null) {
         final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
         for (final file in files) {
-          if (file.name == expectedName) {
+          final isOwnedByMe = file.owners?.any((owner) => owner.emailAddress == _driveService.currentUser?.email) ?? false;
+          if (file.name == expectedName && isOwnedByMe) {
             matchedFileId = file.id;
             break;
           }
@@ -388,8 +389,8 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
             _FriendsWorldsCard(
               sharedFiles: _sharedWorlds.where((file) {
                 // Filter out current user's file to show friend worlds
-                final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
-                return file.name != expectedName;
+                final isOwnedByMe = file.owners?.any((owner) => owner.emailAddress == _driveService.currentUser?.email) ?? false;
+                return !isOwnedByMe;
               }).toList(),
               isBusy: isSyncingOrBusy,
               onImport: (file) => _importFriendWorld(server, file),
