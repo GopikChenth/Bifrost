@@ -10,18 +10,22 @@ import 'package:bifrost/Services/server_manager_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late String absoluteMockPath;
+  late String mockPath;
 
   setUp(() async {
-    final String absoluteMockPath = Directory('./mock_servers').absolute.path;
+    final String uniqueId = DateTime.now().microsecondsSinceEpoch.toString();
+    mockPath = './mock_servers_$uniqueId';
+    absoluteMockPath = Directory(mockPath).absolute.path;
     SharedPreferences.setMockInitialValues(<String, Object>{
       'use_default_server_directory': false,
       'custom_server_directory_path': absoluteMockPath,
     });
 
     // Create a mock server directory and metadata file
-    final Directory mockDir = Directory('./mock_servers/test_server');
+    final Directory mockDir = Directory('$mockPath/test_server');
     await mockDir.create(recursive: true);
-    final File metadataFile = File('./mock_servers/test_server/bifrost_server.json');
+    final File metadataFile = File('$mockPath/test_server/bifrost_server.json');
     await metadataFile.writeAsString(jsonEncode(<String, dynamic>{
       'name': 'Test Server',
       'version': '1.20.4',
@@ -51,9 +55,11 @@ void main() {
   });
 
   tearDown(() async {
-    final Directory mockDir = Directory('./mock_servers');
+    final Directory mockDir = Directory(mockPath);
     if (await mockDir.exists()) {
-      await mockDir.delete(recursive: true);
+      try {
+        await mockDir.delete(recursive: true);
+      } catch (_) {}
     }
   });
 
@@ -71,7 +77,7 @@ void main() {
             return <String, dynamic>{
               'state': 'running',
               'isBusy': false,
-              'activeServerPath': Directory('./mock_servers/test_server').absolute.path,
+              'activeServerPath': Directory('$mockPath/test_server').absolute.path,
               'consoleOutput': '[12:00:00] [Server thread/INFO]: PlayerOne joined the game\n[12:00:05] [Server thread/INFO]: PlayerTwo joined the game\n',
               'lastMessage': 'Server is running normally',
               'memoryUsageMb': 1234,
@@ -86,7 +92,7 @@ void main() {
     await serverManager.loadStoredServers();
 
     final BifrostServer? server = serverManager.serverByPath(
-      Directory('./mock_servers/test_server').absolute.path,
+      Directory('$mockPath/test_server').absolute.path,
     );
     expect(server, isNotNull);
     expect(server!.name, equals('Test Server'));
@@ -117,5 +123,8 @@ void main() {
 
     // Verify that '2 online (PlayerOne, PlayerTwo)' is displayed
     expect(find.text('2 online (PlayerOne, PlayerTwo)'), findsWidgets);
+
+    // Clean up and dispose ServerPage to cancel periodic timers
+    await tester.pumpWidget(const SizedBox());
   });
 }

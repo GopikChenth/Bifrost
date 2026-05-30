@@ -15,13 +15,13 @@ abstract class BifrostTheme {
 // Theme Modules
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 1. Premium Dark Theme Module
-class PremiumDarkTheme implements BifrostTheme {
+/// 1. Midnight Green Theme Module
+class MidnightGreenTheme implements BifrostTheme {
   @override
   String get id => 'main';
 
   @override
-  String get name => 'Premium Dark';
+  String get name => 'Midnight Green';
 
   @override
   Color get previewColor => const Color(0xFF52A435);
@@ -82,45 +82,6 @@ class ClassicTealTheme implements BifrostTheme {
       );
 }
 
-/// 3. Frosty Ice Theme Module
-class FrostyIceTheme implements BifrostTheme {
-  @override
-  String get id => 'frost';
-
-  @override
-  String get name => 'Frosty Ice';
-
-  @override
-  Color get previewColor => const Color(0xFF5F7082);
-
-  @override
-  Color? get scaffoldBackgroundColor => const Color(0xFF182B3D);
-
-  @override
-  ColorScheme get colorScheme => const ColorScheme(
-        brightness: Brightness.dark,
-        primary: Color(0xFF8FA3B8),
-        onPrimary: Color(0xFF182B3D),
-        primaryContainer: Color(0xFF253D62),
-        onPrimaryContainer: Color(0xFFC1C1C1),
-        secondary: Color(0xFF5F7082),
-        onSecondary: Color(0xFF182B3D),
-        secondaryContainer: Color(0xFF253D62),
-        onSecondaryContainer: Color(0xFFC1C1C1),
-        surface: Color(0xFF182B3D),
-        onSurface: Color(0xFFC1C1C1),
-        onSurfaceVariant: Color(0xFF8FA3B8),
-        outline: Color(0xFF494D5F),
-        outlineVariant: Color(0xFF494D5F),
-        error: Color(0xFFE97152),
-        onError: Color(0xFFFFFFFF),
-        surfaceContainerLowest: Color(0xFF182B3D),
-        surfaceContainerLow: Color(0xFF253D62),
-        surfaceContainer: Color(0xFF253D62),
-        surfaceContainerHigh: Color(0xFF253D62),
-        surfaceContainerHighest: Color(0xFF494D5F),
-      );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Theme Engine & Registry
@@ -129,9 +90,8 @@ class FrostyIceTheme implements BifrostTheme {
 class AppTheme {
   /// The central registry of modular themes.
   static final Map<String, BifrostTheme> _themes = {
-    'main': PremiumDarkTheme(),
+    'main': MidnightGreenTheme(),
     'teal': ClassicTealTheme(),
-    'frost': FrostyIceTheme(),
   };
 
   /// Returns a list of all registered themes.
@@ -139,7 +99,7 @@ class AppTheme {
 
   /// Retrieves a registered theme by its unique identifier.
   static BifrostTheme getTheme(String themeId) {
-    return _themes[themeId] ?? PremiumDarkTheme();
+    return _themes[themeId] ?? _themes['teal']!;
   }
 
   /// Retrives a theme's key primary/accent color for preview rings.

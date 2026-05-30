@@ -389,6 +389,7 @@ class _ServerPageState extends State<ServerPage>
                   expanded: true,
                   isActive: server.status == 'Restarting',
                   siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  hideLabelWhenInactive: true,
                   onPressStateChanged: (bool isPressed) {
                     setState(() {
                       _pressedButtonIndex = isPressed ? 2 : null;

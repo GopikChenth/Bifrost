@@ -36,7 +36,7 @@ class ServerDirectorySettings {
 
 class AppSettings {
   static bool disableAnimations = false;
-  static final ValueNotifier<String> themeNotifier = ValueNotifier<String>('main');
+  static final ValueNotifier<String> themeNotifier = ValueNotifier<String>('teal');
 }
 
 class SettingsRepository {
@@ -86,7 +86,7 @@ class SettingsRepository {
 
   Future<String> loadAppTheme() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
-    return preferences.getString(_appThemeKey) ?? 'main';
+    return preferences.getString(_appThemeKey) ?? 'teal';
   }
 
   Future<void> saveAppTheme(String value) async {

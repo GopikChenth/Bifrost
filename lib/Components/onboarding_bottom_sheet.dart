@@ -135,12 +135,13 @@ class _OnboardingBottomSheetState extends State<OnboardingBottomSheet>
 
     return PopScope(
       canPop: _hasStorageAccess, // Prevent closing if storage permission is not granted yet
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
             const SizedBox(height: 8),
             // Header
             Row(
@@ -300,8 +301,9 @@ class _OnboardingBottomSheetState extends State<OnboardingBottomSheet>
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPermissionCard({
     required String title,
