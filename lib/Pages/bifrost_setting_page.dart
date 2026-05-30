@@ -1,6 +1,8 @@
 import 'package:bifrost/Components/onboarding_bottom_sheet.dart';
 import 'package:bifrost/Components/theme.dart';
+import 'package:bifrost/Pages/google_drive_sync_page.dart';
 import 'package:bifrost/Services/battery_optimization_service.dart';
+import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:file_picker/file_picker.dart';
@@ -596,6 +598,29 @@ class _SettingsPageState extends State<SettingsPage>
                                 builder: (BuildContext context) =>
                                     const OnboardingBottomSheet(),
                               ).then((_) => _refreshPermissionStatus());
+                            },
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('Shared Worlds'),
+                            subtitle: const Text(
+                              'Download co-op worlds shared by your friends',
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (BuildContext context) => GoogleDriveSyncPage(
+                                    serverPath: null,
+                                    serverManager: ServerManagerService(),
+                                  ),
+                                ),
+                              );
                             },
                           ),
                           const Divider(height: 24, thickness: 0.5),

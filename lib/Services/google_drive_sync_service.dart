@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -12,6 +13,7 @@ class GoogleDriveSyncService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: <String>[
       drive.DriveApi.driveFileScope,
+      drive.DriveApi.driveReadonlyScope,
     ],
   );
 
@@ -53,6 +55,9 @@ class GoogleDriveSyncService {
     required String serverName,
     required File zipFile,
     required String localWorldPath,
+    required String version,
+    required String type,
+    required String memoryLabel,
   }) async {
     final driveApi = await _getDriveApi();
     if (driveApi == null) {
@@ -73,12 +78,20 @@ class GoogleDriveSyncService {
       zipFile.lengthSync(),
     );
 
+    final metadataJson = jsonEncode({
+      'version': version,
+      'type': type,
+      'memoryLabel': memoryLabel,
+      'serverName': serverName,
+    });
+    final descriptionText = 'Bifrost Minecraft World Sync Backup. Path: $localWorldPath. Synced at: ${DateTime.now().toIso8601String()}\nBifrostMetadata:$metadataJson';
+
     if (filesList.files != null && filesList.files!.isNotEmpty) {
       final existingFile = filesList.files!.first;
       final fileId = existingFile.id!;
       
       final updatedFile = drive.File()
-        ..description = 'Bifrost Minecraft World Sync Backup. Path: $localWorldPath. Synced at: ${DateTime.now().toIso8601String()}';
+        ..description = descriptionText;
 
       final result = await driveApi.files.update(
         updatedFile,
@@ -90,7 +103,7 @@ class GoogleDriveSyncService {
     } else {
       final newFile = drive.File()
         ..name = filename
-        ..description = 'Bifrost Minecraft World Sync Backup. Path: $localWorldPath. Synced at: ${DateTime.now().toIso8601String()}'
+        ..description = descriptionText
         ..mimeType = 'application/zip';
 
       final result = await driveApi.files.create(
@@ -132,7 +145,7 @@ class GoogleDriveSyncService {
     }
 
     final response = await driveApi.files.list(
-      q: "name contains 'bifrost_sync_' and mimeType = 'application/zip' and trashed = false",
+      q: "name contains 'bifrost_sync_' and mimeType = 'application/zip' and (sharedWithMe = true or 'me' in owners) and trashed = false",
       spaces: 'drive',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,

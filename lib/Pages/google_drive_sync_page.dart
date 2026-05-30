@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
@@ -9,11 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class GoogleDriveSyncPage extends StatefulWidget {
   const GoogleDriveSyncPage({
     super.key,
-    required this.serverPath,
+    this.serverPath,
     required this.serverManager,
   });
 
-  final String serverPath;
+  final String? serverPath;
   final ServerManagerService serverManager;
 
   @override
@@ -72,6 +73,7 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
   }
 
   Future<void> _loadSettings() async {
+    if (widget.serverPath == null) return;
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _isAutoSyncEnabled = prefs.getBool('gdrive_autosync_${widget.serverPath}') ?? false;
@@ -79,6 +81,7 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
   }
 
   Future<void> _toggleAutoSync(bool value) async {
+    if (widget.serverPath == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('gdrive_autosync_${widget.serverPath}', value);
     if (!mounted) return;
@@ -105,7 +108,9 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
 
     try {
       final files = await _driveService.listAvailableWorldSyncFiles();
-      final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+      final BifrostServer? server = widget.serverPath != null
+          ? widget.serverManager.serverByPath(widget.serverPath!)
+          : null;
       
       String? matchedFileId;
       if (server != null) {
@@ -307,10 +312,106 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
         .replaceAll('_', ' ');
   }
 
+  Map<String, String>? _parseBifrostMetadata(String? description) {
+    if (description == null) return null;
+    final marker = 'BifrostMetadata:';
+    final index = description.indexOf(marker);
+    if (index == -1) return null;
+    try {
+      final jsonStr = description.substring(index + marker.length).trim();
+      final Map<String, dynamic> decoded = Map<String, dynamic>.from(jsonDecode(jsonStr));
+      return decoded.map((key, value) => MapEntry(key, value.toString()));
+    } catch (e) {
+      debugPrint('Error parsing BifrostMetadata: $e');
+      return null;
+    }
+  }
+
+  Future<void> _importAndCreateFriendWorld(drive.File file) async {
+    final metadata = _parseBifrostMetadata(file.description);
+    
+    final String serverName = metadata?['serverName'] ?? _cleanFileName(file.name ?? 'shared_world');
+    final String version = metadata?['version'] ?? '1.20.1';
+    final String type = metadata?['type'] ?? 'Vanilla';
+    final String memoryLabel = metadata?['memoryLabel'] ?? '2.0 GB';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        return AlertDialog(
+          icon: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.cloud_download_rounded,
+              color: colors.onPrimaryContainer,
+            ),
+          ),
+          title: const Text('Setup Server Automatically?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This will download the world and automatically configure a Minecraft server:'),
+              const SizedBox(height: 12),
+              Text('• Name: $serverName', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('• Version: $version', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('• Type: $type', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('• Memory: $memoryLabel', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              const Text('ArcadeLabs Bifrost will download the server binary (.jar) and setup the directories automatically.'),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Download & Setup'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isPerformingAction = true;
+    });
+
+    final result = await widget.serverManager.createAndSyncServerFromSharedFile(
+      name: serverName,
+      version: version,
+      type: type,
+      memoryLabel: memoryLabel,
+      fileId: file.id!,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _isPerformingAction = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result ?? 'Setup completed.')),
+    );
+    _loadDriveData();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
-    if (server == null) {
+    final BifrostServer? server = widget.serverPath != null
+        ? widget.serverManager.serverByPath(widget.serverPath!)
+        : null;
+
+    if (widget.serverPath != null && server == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Google Drive Sync')),
         body: const Center(child: Text('Server no longer exists.')),
@@ -324,7 +425,9 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Google Drive Sync'),
+        title: widget.serverPath != null
+            ? const Text('Google Drive Sync')
+            : const Text('Shared Worlds'),
         actions: [
           if (user != null)
             IconButton(
@@ -368,19 +471,21 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
 
           if (user != null) ...[
             // Sync & Playtime Card
-            _SyncControlsCard(
-              server: server,
-              isAutoSyncEnabled: _isAutoSyncEnabled,
-              isSyncing: isSyncingOrBusy,
-              playtimeText: _formatPlaytime(widget.serverManager.playtimeFor(server.path)),
-              lastSyncText: _formatDateTime(widget.serverManager.lastSyncTimeFor(server.path)),
-              onToggleAutoSync: _toggleAutoSync,
-              onSyncNow: () => _manualSync(server),
-            ),
-            const SizedBox(height: 16),
+            if (server != null) ...[
+              _SyncControlsCard(
+                server: server,
+                isAutoSyncEnabled: _isAutoSyncEnabled,
+                isSyncing: isSyncingOrBusy,
+                playtimeText: _formatPlaytime(widget.serverManager.playtimeFor(server.path)),
+                lastSyncText: _formatDateTime(widget.serverManager.lastSyncTimeFor(server.path)),
+                onToggleAutoSync: _toggleAutoSync,
+                onSyncNow: () => _manualSync(server),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Share section (only available if we have already synced and have a file ID)
-            if (_currentFileId != null) ...[
+            if (server != null && _currentFileId != null) ...[
               _ShareSectionCard(
                 emailController: _emailController,
                 isSharing: _isSharing,
@@ -404,13 +509,23 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
                 }
                 
                 // Fallback to name check if owner details are not available
-                final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
-                return file.name != expectedName;
+                if (server != null) {
+                  final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
+                  return file.name != expectedName;
+                }
+                return true;
               }).toList(),
               isBusy: isSyncingOrBusy,
-              onImport: (file) => _importFriendWorld(server, file),
+              onImport: (file) {
+                if (server != null) {
+                  _importFriendWorld(server, file);
+                } else {
+                  _importAndCreateFriendWorld(file);
+                }
+              },
               cleanName: _cleanFileName,
               formatDateTime: _formatDateTime,
+              isGlobal: server == null,
             ),
           ],
         ],
@@ -747,6 +862,7 @@ class _FriendsWorldsCard extends StatelessWidget {
     required this.onImport,
     required this.cleanName,
     required this.formatDateTime,
+    required this.isGlobal,
   });
 
   final List<drive.File> sharedFiles;
@@ -754,6 +870,7 @@ class _FriendsWorldsCard extends StatelessWidget {
   final Function(drive.File file) onImport;
   final String Function(String name) cleanName;
   final String Function(DateTime? date) formatDateTime;
+  final bool isGlobal;
 
   @override
   Widget build(BuildContext context) {
@@ -843,7 +960,7 @@ class _FriendsWorldsCard extends StatelessWidget {
                       IconButton.filledTonal(
                         onPressed: isBusy ? null : () => onImport(file),
                         icon: const Icon(Icons.download_rounded),
-                        tooltip: 'Sync & Replace World',
+                        tooltip: isGlobal ? 'Download & Setup Server' : 'Sync & Replace World',
                       ),
                     ],
                   );

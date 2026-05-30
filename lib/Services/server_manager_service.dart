@@ -1059,7 +1059,7 @@ class ServerManagerService extends ChangeNotifier {
       final String worldPath = await resolveWorldDirectoryPath(server);
       final Directory worldDir = Directory(worldPath);
       if (!await worldDir.exists()) {
-        throw Exception('World directory does not exist at $worldPath');
+        throw Exception('World directory does not exist. Please start the server at least once to generate the world before syncing to Google Drive.');
       }
 
       final Directory cacheDir = await getTemporaryDirectory();
@@ -1081,6 +1081,9 @@ class ServerManagerService extends ChangeNotifier {
         serverName: server.name,
         zipFile: zipFile,
         localWorldPath: worldPath,
+        version: server.version,
+        type: server.type,
+        memoryLabel: server.memoryLabel,
       );
 
       final DateTime now = DateTime.now();
@@ -1093,7 +1096,10 @@ class ServerManagerService extends ChangeNotifier {
       if (server.isOnline) {
         await sendServerCommand(server: server, command: 'save-on');
       }
-      return 'Failed to sync to Google Drive: ${e.toString()}';
+      final msg = e.toString().startsWith('Exception: ')
+          ? e.toString().substring('Exception: '.length)
+          : e.toString();
+      return 'Failed to sync to Google Drive: $msg';
     } finally {
       if (zipFile != null && zipFile.existsSync()) {
         try {
@@ -1164,6 +1170,53 @@ class ServerManagerService extends ChangeNotifier {
       _isSyncing = false;
       notifyListeners();
     }
+  }
+
+  bool serverExistsWithName(String name) {
+    return _servers.any((s) => s.name.toLowerCase() == name.toLowerCase());
+  }
+
+  String generateUniqueServerName(String baseName) {
+    if (!serverExistsWithName(baseName)) return baseName;
+    int suffix = 2;
+    while (serverExistsWithName('$baseName ($suffix)')) {
+      suffix++;
+    }
+    return '$baseName ($suffix)';
+  }
+
+  Future<String?> createAndSyncServerFromSharedFile({
+    required String name,
+    required String version,
+    required String type,
+    required String memoryLabel,
+    required String fileId,
+  }) async {
+    final String uniqueName = generateUniqueServerName(name);
+    final AddServerResult addServerResult = AddServerResult(
+      name: uniqueName,
+      version: version,
+      serverType: type,
+      memoryLabel: memoryLabel,
+    );
+
+    final String? createResult = await createServer(addServerResult);
+    if (createResult == null || createResult.contains('cancelled') || createResult.toLowerCase().contains('failed')) {
+      return createResult;
+    }
+
+    // After loadStoredServers is completed, find the server we just created
+    BifrostServer? newServer;
+    try {
+      newServer = _servers.firstWhere(
+        (s) => s.name == uniqueName,
+      );
+    } catch (_) {
+      return 'Failed to locate the newly created server.';
+    }
+
+    final String? syncResult = await downloadAndSyncWorldFromGoogleDrive(newServer, fileId);
+    return syncResult;
   }
 
   void resetForTesting() {
