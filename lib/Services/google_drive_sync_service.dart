@@ -61,9 +61,9 @@ class GoogleDriveSyncService {
 
     final filename = 'bifrost_sync_${serverName.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
 
-    // Search for existing file
+    // Search for existing file owned by the current user
     final filesList = await driveApi.files.list(
-      q: "name = '$filename' and trashed = false",
+      q: "name = '$filename' and 'me' in owners and trashed = false",
       spaces: 'drive',
       $fields: 'files(id, name)',
     );
@@ -134,6 +134,8 @@ class GoogleDriveSyncService {
     final response = await driveApi.files.list(
       q: "name contains 'bifrost_sync_' and mimeType = 'application/zip' and trashed = false",
       spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
       $fields: 'files(id, name, owners(displayName, emailAddress), modifiedTime, size, description)',
     );
 

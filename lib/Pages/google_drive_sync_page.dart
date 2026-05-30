@@ -110,11 +110,18 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
       String? matchedFileId;
       if (server != null) {
         final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
+        final currentUserEmail = _driveService.currentUser?.email;
         for (final file in files) {
-          final isOwnedByMe = file.owners?.any((owner) => owner.emailAddress == _driveService.currentUser?.email) ?? false;
-          if (file.name == expectedName && isOwnedByMe) {
-            matchedFileId = file.id;
-            break;
+          if (file.name == expectedName) {
+            // Ensure the file is owned by the current user to avoid matching friends' shared files with the same name
+            final isOwnedByMe = file.owners?.any(
+              (owner) => owner.emailAddress?.toLowerCase() == currentUserEmail?.toLowerCase(),
+            ) ?? false;
+            
+            if (isOwnedByMe || currentUserEmail == null) {
+              matchedFileId = file.id;
+              break;
+            }
           }
         }
       }
@@ -388,9 +395,17 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
             // Friends' Shared Worlds
             _FriendsWorldsCard(
               sharedFiles: _sharedWorlds.where((file) {
-                // Filter out current user's file to show friend worlds
-                final isOwnedByMe = file.owners?.any((owner) => owner.emailAddress == _driveService.currentUser?.email) ?? false;
-                return !isOwnedByMe;
+                // Filter out current user's file to show friend worlds by checking ownership
+                if (user.email.isNotEmpty && file.owners != null && file.owners!.isNotEmpty) {
+                  final isOwnedByMe = file.owners!.any(
+                    (owner) => owner.emailAddress?.toLowerCase() == user.email.toLowerCase(),
+                  );
+                  return !isOwnedByMe;
+                }
+                
+                // Fallback to name check if owner details are not available
+                final expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
+                return file.name != expectedName;
               }).toList(),
               isBusy: isSyncingOrBusy,
               onImport: (file) => _importFriendWorld(server, file),

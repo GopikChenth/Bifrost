@@ -29,7 +29,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool _disableAnimations = false;
   bool _isAggressiveOem = false;
   String _deviceManufacturer = '';
-  String _appTheme = 'main';
+  String _appTheme = 'teal';
   String _resolvedDirectoryPath = ServerDirectorySettings.defaultDirectoryPath;
   String? _statusMessage;
 
@@ -622,16 +622,12 @@ class _SettingsPageState extends State<SettingsPage>
                                   ),
                                   items: const <DropdownMenuItem<String>>[
                                     DropdownMenuItem<String>(
-                                      value: 'main',
-                                      child: Text('Premium Dark'),
-                                    ),
-                                    DropdownMenuItem<String>(
                                       value: 'teal',
                                       child: Text('Classic Teal'),
                                     ),
                                     DropdownMenuItem<String>(
-                                      value: 'frost',
-                                      child: Text('Frosty Ice'),
+                                      value: 'main',
+                                      child: Text('Midnight Green'),
                                     ),
                                   ],
                                   onChanged: (String? value) {

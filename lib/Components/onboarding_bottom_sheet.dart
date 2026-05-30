@@ -135,175 +135,175 @@ class _OnboardingBottomSheetState extends State<OnboardingBottomSheet>
 
     return PopScope(
       canPop: _hasStorageAccess, // Prevent closing if storage permission is not granted yet
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-        child: SingleChildScrollView(
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const SizedBox(height: 8),
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      Icons.dns_rounded,
-                      color: colors.onPrimaryContainer,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Welcome to Bifrost',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Host Minecraft servers on your phone',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'To run local servers reliably, please configure the following settings:',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-
-              // Step 1: Storage Permission Card
-              _buildPermissionCard(
-                title: 'Storage Access',
-                description: 'Required to create server directories, worlds, properties, and configurations.',
-                isGranted: _hasStorageAccess,
-                icon: Icons.folder_open_rounded,
-                buttonText: 'Grant Storage',
-                onPressed: _requestStorage,
-                colors: colors,
-                theme: theme,
-              ),
-              const SizedBox(height: 12),
-
-              // Step 2: Battery Optimization Card
-              _buildPermissionCard(
-                title: 'Unrestricted Battery',
-                description: 'Exempts Bifrost from battery limits so the server is not killed and does not disconnect when the phone is locked or in sleep mode.',
-                isGranted: _isBatteryExempt,
-                icon: Icons.battery_saver_rounded,
-                buttonText: 'Allow Background',
-                onPressed: _requestBattery,
-                colors: colors,
-                theme: theme,
-              ),
-              if (_isAggressiveOem) ...[
-                const SizedBox(height: 8),
-                Card(
-                  elevation: 0,
-                  color: colors.errorContainer.withValues(alpha: 0.15),
-                  shape: RoundedRectangleBorder(
+            const SizedBox(height: 8),
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.primaryContainer,
                     borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: colors.error.withValues(alpha: 0.3),
-                      width: 1.0,
-                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Icon(
-                              Icons.warning_rounded,
-                              color: colors.error,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '$_deviceManufacturer Device: Manual Action Required',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: colors.error,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
+                  child: Icon(
+                    Icons.dns_rounded,
+                    color: colors.onPrimaryContainer,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Welcome to Bifrost',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '$_deviceManufacturer devices aggressively restrict background processes in sleep. To prevent server disconnection:\n'
-                          '1. Tap "Go to App Info" below, go to "Battery" -> "Battery usage", and choose "Unrestricted" (or enable "Allow background activity").\n'
-                          '2. In phone settings, go to "Battery" -> "More/Advanced settings" -> disable "Sleep standby optimization".',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.onErrorContainer,
-                            height: 1.4,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Host Minecraft servers on your phone',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
                         ),
-                        const SizedBox(height: 10),
-                        FilledButton.tonalIcon(
-                          onPressed: () async {
-                            try {
-                              await _batteryOptimizationService.openAppDetailsSettings();
-                            } catch (e) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: ${e.toString()}')),
-                              );
-                            }
-                          },
-                          icon: const Icon(Icons.info_outline_rounded, size: 16),
-                          label: const Text('Go to App Info'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-              const SizedBox(height: 28),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'To run local servers reliably, please configure the following settings:',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
 
-              // Finish Button
-              FilledButton.icon(
-                onPressed: _hasStorageAccess ? _finishOnboarding : null,
-                icon: const Icon(Icons.rocket_launch_rounded),
-                label: const Text('Start Bifrost'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            // Step 1: Storage Permission Card
+            _buildPermissionCard(
+              title: 'Storage Access',
+              description: 'Required to create server directories, worlds, properties, and configurations.',
+              isGranted: _hasStorageAccess,
+              icon: Icons.folder_open_rounded,
+              buttonText: 'Grant Storage',
+              onPressed: _requestStorage,
+              colors: colors,
+              theme: theme,
+            ),
+            const SizedBox(height: 12),
+
+            // Step 2: Battery Optimization Card
+            _buildPermissionCard(
+              title: 'Unrestricted Battery',
+              description: 'Exempts Bifrost from battery limits so the server is not killed and does not disconnect when the phone is locked or in sleep mode.',
+              isGranted: _isBatteryExempt,
+              icon: Icons.battery_saver_rounded,
+              buttonText: 'Allow Background',
+              onPressed: _requestBattery,
+              colors: colors,
+              theme: theme,
+            ),
+            if (_isAggressiveOem) ...[
+              const SizedBox(height: 8),
+              Card(
+                elevation: 0,
+                color: colors.errorContainer.withValues(alpha: 0.15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: colors.error.withValues(alpha: 0.3),
+                    width: 1.0,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Icon(
+                            Icons.warning_rounded,
+                            color: colors.error,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '$_deviceManufacturer Device: Manual Action Required',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colors.error,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$_deviceManufacturer devices aggressively restrict background processes in sleep. To prevent server disconnection:\n'
+                        '1. Tap "Go to App Info" below, go to "Battery" -> "Battery usage", and choose "Unrestricted" (or enable "Allow background activity").\n'
+                        '2. In phone settings, go to "Battery" -> "More/Advanced settings" -> disable "Sleep standby optimization".',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onErrorContainer,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.tonalIcon(
+                        onPressed: () async {
+                          try {
+                            await _batteryOptimizationService.openAppDetailsSettings();
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: ${e.toString()}')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.info_outline_rounded, size: 16),
+                        label: const Text('Go to App Info'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
-          ),
+            const SizedBox(height: 28),
+
+            // Finish Button
+            FilledButton.icon(
+              onPressed: _hasStorageAccess ? _finishOnboarding : null,
+              icon: const Icon(Icons.rocket_launch_rounded),
+              label: const Text('Start Bifrost'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPermissionCard({
     required String title,
