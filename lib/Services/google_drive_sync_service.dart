@@ -54,12 +54,22 @@ class GoogleDriveSyncService {
     final user = _googleSignIn.currentUser;
     if (user == null) return false;
 
-    final hasAccess = await _googleSignIn.canAccessScopes(<String>[drive.DriveApi.driveFileScope]);
-    if (!hasAccess) {
-      final granted = await _googleSignIn.requestScopes(<String>[drive.DriveApi.driveFileScope]);
-      return granted;
+    try {
+      final hasAccess = await _googleSignIn.canAccessScopes(<String>[drive.DriveApi.driveFileScope]);
+      if (!hasAccess) {
+        final granted = await _googleSignIn.requestScopes(<String>[drive.DriveApi.driveFileScope]);
+        return granted;
+      }
+      return true;
+    } catch (e) {
+      // Fallback for platforms/versions where canAccessScopes throws an UnimplementedError or other exception
+      try {
+        final granted = await _googleSignIn.requestScopes(<String>[drive.DriveApi.driveFileScope]);
+        return granted;
+      } catch (_) {
+        return false;
+      }
     }
-    return true;
   }
 
   /// Uploads or updates the world zip file on Google Drive.
