@@ -49,6 +49,19 @@ class GoogleDriveSyncService {
     return drive.DriveApi(client);
   }
 
+  /// Checks if the app has write access (drive.file scope) and requests it if not.
+  Future<bool> ensureWriteAccess() async {
+    final user = _googleSignIn.currentUser;
+    if (user == null) return false;
+
+    final hasAccess = await _googleSignIn.canAccessScopes(<String>[drive.DriveApi.driveFileScope]);
+    if (!hasAccess) {
+      final granted = await _googleSignIn.requestScopes(<String>[drive.DriveApi.driveFileScope]);
+      return granted;
+    }
+    return true;
+  }
+
   /// Uploads or updates the world zip file on Google Drive.
   /// Returns the Google Drive file ID.
   Future<String> uploadWorldSyncFile({
@@ -58,7 +71,13 @@ class GoogleDriveSyncService {
     required String version,
     required String type,
     required String memoryLabel,
+    String? existingFileId,
   }) async {
+    final hasWriteAccess = await ensureWriteAccess();
+    if (!hasWriteAccess) {
+      throw Exception('Write permission to Google Drive was not granted. Please allow the app to create/update files when prompted.');
+    }
+
     final driveApi = await _getDriveApi();
     if (driveApi == null) {
       throw Exception('User is not authenticated with Google.');
@@ -66,12 +85,19 @@ class GoogleDriveSyncService {
 
     final filename = 'bifrost_sync_${serverName.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
 
-    // Search for existing file owned by the current user
-    final filesList = await driveApi.files.list(
-      q: "name = '$filename' and 'me' in owners and trashed = false",
-      spaces: 'drive',
-      $fields: 'files(id, name)',
-    );
+    String? fileId = existingFileId;
+
+    if (fileId == null) {
+      // Search for existing file owned by the current user
+      final filesList = await driveApi.files.list(
+        q: "name = '$filename' and 'me' in owners and trashed = false",
+        spaces: 'drive',
+        $fields: 'files(id, name)',
+      );
+      if (filesList.files != null && filesList.files!.isNotEmpty) {
+        fileId = filesList.files!.first.id;
+      }
+    }
 
     final media = drive.Media(
       zipFile.openRead(),
@@ -86,9 +112,7 @@ class GoogleDriveSyncService {
     });
     final descriptionText = 'Bifrost Minecraft World Sync Backup. Path: $localWorldPath. Synced at: ${DateTime.now().toIso8601String()}\nBifrostMetadata:$metadataJson';
 
-    if (filesList.files != null && filesList.files!.isNotEmpty) {
-      final existingFile = filesList.files!.first;
-      final fileId = existingFile.id!;
+    if (fileId != null) {
       
       final updatedFile = drive.File()
         ..description = descriptionText;
@@ -205,4 +229,22 @@ class GoogleDriveSyncService {
 
     await driveApi.permissions.delete(fileId, permissionId);
   }
+
+  /// Fetches the email address of the file's owner.
+  Future<String?> getFileOwnerEmail(String fileId) async {
+    final driveApi = await _getDriveApi();
+    if (driveApi == null) {
+      return null;
+    }
+    try {
+      final file = await driveApi.files.get(
+        fileId,
+        $fields: 'owners(emailAddress)',
+      ) as drive.File;
+      return file.owners?.first.emailAddress;
+    } catch (_) {
+      return null;
+    }
+  }
 }
+

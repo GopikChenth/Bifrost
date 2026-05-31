@@ -11,9 +11,12 @@ import 'package:bifrost/Pages/server_terminal_page.dart';
 import 'package:bifrost/Pages/server_players_page.dart';
 import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
+import 'package:bifrost/Services/google_drive_sync_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
 
 class ServerPage extends StatefulWidget {
   const ServerPage({
@@ -37,6 +40,14 @@ class _ServerPageState extends State<ServerPage>
   int? _pressedButtonIndex;
   late final List<double> _activeProgresses;
   Timer? _refreshTimer;
+
+  bool _isShared = false;
+  bool _isReceived = false;
+  String? _fileId;
+  String? _ownerEmail;
+  bool _isLocalSyncing = false;
+  late final List<double> _activeSyncProgresses;
+  String? _activeSyncMode;
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
@@ -69,6 +80,159 @@ class _ServerPageState extends State<ServerPage>
     widget.serverManager.startServer(server);
   }
 
+  Future<void> _checkSharedWorldStatus() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+    if (server == null) return;
+
+    final String? fileId = prefs.getString('gdrive_file_id_${server.path}');
+    final String? lastSync = prefs.getString('gdrive_last_sync_${server.path}');
+    final bool? isReceived = prefs.getBool('gdrive_is_received_${server.path}');
+    final String? ownerEmail = prefs.getString('gdrive_owner_email_${server.path}');
+
+    if (fileId != null || lastSync != null) {
+      if (mounted) {
+        setState(() {
+          _isShared = true;
+          _isReceived = isReceived ?? false;
+          _fileId = fileId;
+          _ownerEmail = ownerEmail;
+        });
+      }
+    }
+
+    var googleSignInUser = GoogleDriveSyncService.instance.currentUser;
+    if (googleSignInUser == null) {
+      try {
+        googleSignInUser = await GoogleDriveSyncService.instance.signInSilently();
+      } catch (_) {}
+    }
+
+    if (googleSignInUser != null) {
+      try {
+        final List<drive.File> files = await GoogleDriveSyncService.instance.listAvailableWorldSyncFiles();
+        final String expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
+        
+        drive.File? matchedFile;
+        for (final drive.File file in files) {
+          if (file.name == expectedName) {
+            matchedFile = file;
+            break;
+          }
+        }
+
+        if (matchedFile != null) {
+          final bool isOwnedByMe = matchedFile.owners?.any(
+            (owner) => owner.emailAddress?.toLowerCase() == googleSignInUser!.email.toLowerCase(),
+          ) ?? false;
+
+          final String owner = matchedFile.owners?.first.emailAddress ?? 'Unknown';
+
+          await prefs.setString('gdrive_file_id_${server.path}', matchedFile.id!);
+          await prefs.setBool('gdrive_is_received_${server.path}', !isOwnedByMe);
+          await prefs.setString('gdrive_owner_email_${server.path}', owner);
+
+          if (mounted) {
+            setState(() {
+              _isShared = true;
+              _isReceived = !isOwnedByMe;
+              _fileId = matchedFile?.id;
+              _ownerEmail = owner;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error verifying sync status: $e');
+      }
+    }
+  }
+
+  Future<void> _syncPull(BifrostServer server) async {
+    if (_isLocalSyncing || widget.serverManager.isSyncing) return;
+
+    final String? fileId = _fileId;
+    if (fileId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot sync pull: Google Drive file ID is missing.')),
+      );
+      return;
+    }
+
+    final bool confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Sync world from cloud?'),
+          content: Text(
+            _isReceived
+                ? 'This will download and overwrite your current local world with the version shared by ${_ownerEmail ?? 'your friend'}.\n\n'
+                  'A local backup of your current world will be saved automatically.'
+                : 'This will download and overwrite your local world with your latest backup from Google Drive.\n\n'
+                  'A local backup of your current world will be saved automatically.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Download & Sync'),
+            ),
+          ],
+        );
+      },
+    ) ?? false;
+
+    if (!confirm) return;
+
+    setState(() {
+      _isLocalSyncing = true;
+      _activeSyncMode = 'pull';
+      _activeSyncProgresses[0] = 1.0;
+      _activeSyncProgresses[1] = 0.0;
+    });
+
+    final String? result = await widget.serverManager.downloadAndSyncWorldFromGoogleDrive(server, fileId);
+
+    if (mounted) {
+      setState(() {
+        _isLocalSyncing = false;
+        _activeSyncMode = null;
+        _activeSyncProgresses[0] = 0.0;
+        _activeSyncProgresses[1] = 0.0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result ?? 'Sync completed.')),
+      );
+    }
+  }
+
+  Future<void> _syncPush(BifrostServer server) async {
+    if (_isLocalSyncing || widget.serverManager.isSyncing) return;
+
+    setState(() {
+      _isLocalSyncing = true;
+      _activeSyncMode = 'push';
+      _activeSyncProgresses[0] = 0.0;
+      _activeSyncProgresses[1] = 1.0;
+    });
+
+    final String? result = await widget.serverManager.syncWorldToGoogleDrive(server);
+
+    if (mounted) {
+      setState(() {
+        _isLocalSyncing = false;
+        _activeSyncMode = null;
+        _activeSyncProgresses[0] = 0.0;
+        _activeSyncProgresses[1] = 0.0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result ?? 'Sync completed.')),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -82,8 +246,13 @@ class _ServerPageState extends State<ServerPage>
       server != null && server.isOnline ? 1.0 : 0.0,
       0.0,
     ];
+    _activeSyncProgresses = <double>[
+      0.0,
+      0.0,
+    ];
     widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
+    _checkSharedWorldStatus();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       final BifrostServer? s = widget.serverManager.serverByPath(widget.serverPath);
       if (s != null && (s.isOnline || s.isBusy)) {
@@ -116,6 +285,8 @@ class _ServerPageState extends State<ServerPage>
         _activeProgresses[0] = server.isBusy && !server.isOnline ? 1.0 : 0.0;
         _activeProgresses[1] = server.isOnline ? 1.0 : 0.0;
       }
+      _activeSyncProgresses[0] = _activeSyncMode == 'pull' ? 1.0 : 0.0;
+      _activeSyncProgresses[1] = _activeSyncMode == 'push' ? 1.0 : 0.0;
       setState(() {});
     }
   }
@@ -215,7 +386,7 @@ class _ServerPageState extends State<ServerPage>
     final bool canStop = server.isOnline;
     final bool canRestart = server.isOnline && !server.isBusy;
 
-    const int totalSections = 5;
+    final int totalSections = _isShared ? 6 : 5;
 
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
@@ -404,9 +575,27 @@ class _ServerPageState extends State<ServerPage>
               ],
             ),
           ),
+          if (_isShared) ...[
+            const SizedBox(height: 12),
+            _staggeredChild(
+              2,
+              totalSections,
+              _CloudSyncPanel(
+                server: server,
+                isReceived: _isReceived,
+                ownerEmail: _ownerEmail,
+                lastSyncTime: widget.serverManager.lastSyncTimeFor(server.path),
+                isSyncing: _isLocalSyncing || widget.serverManager.isSyncing,
+                activeSyncMode: _activeSyncMode,
+                activeSyncProgresses: _activeSyncProgresses,
+                onPullPressed: () => _syncPull(server),
+                onPushPressed: () => _syncPush(server),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _staggeredChild(
-            2,
+            _isShared ? 3 : 2,
             totalSections,
             _LocalNetworkPanel(
               isLoading: _isLoadingLocalIp,
@@ -415,7 +604,7 @@ class _ServerPageState extends State<ServerPage>
           ),
           const SizedBox(height: 12),
           _staggeredChild(
-            3,
+            _isShared ? 4 : 3,
             totalSections,
             _ServerDetailsPanel(
               server: server,
@@ -424,7 +613,7 @@ class _ServerPageState extends State<ServerPage>
           ),
           const SizedBox(height: 12),
           _staggeredChild(
-            4,
+            _isShared ? 5 : 4,
             totalSections,
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -568,7 +757,7 @@ class _LocalNetworkPanel extends StatelessWidget {
                 Text(
                   'Local Network Address',
                   style: theme.textTheme.labelLarge?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: colors.primary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -580,13 +769,6 @@ class _LocalNetworkPanel extends StatelessWidget {
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                     color: address == null ? colors.onSurfaceVariant : null,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Friends on the same Wi-Fi can join with this address.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -816,3 +998,171 @@ class _StatusPill extends StatelessWidget {
     );
   }
 }
+
+class _CloudSyncPanel extends StatefulWidget {
+  const _CloudSyncPanel({
+    required this.server,
+    required this.isReceived,
+    required this.ownerEmail,
+    required this.lastSyncTime,
+    required this.isSyncing,
+    required this.activeSyncMode,
+    required this.activeSyncProgresses,
+    required this.onPullPressed,
+    required this.onPushPressed,
+  });
+
+  final BifrostServer server;
+  final bool isReceived;
+  final String? ownerEmail;
+  final DateTime? lastSyncTime;
+  final bool isSyncing;
+  final String? activeSyncMode;
+  final List<double> activeSyncProgresses;
+  final VoidCallback onPullPressed;
+  final VoidCallback onPushPressed;
+
+  @override
+  State<_CloudSyncPanel> createState() => _CloudSyncPanelState();
+}
+
+class _CloudSyncPanelState extends State<_CloudSyncPanel> {
+  int? _pressedButtonIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+
+    final String formattedSyncTime = widget.lastSyncTime != null
+        ? _formatDateTime(widget.lastSyncTime!)
+        : 'Never';
+
+    final IconData statusIcon = widget.isSyncing
+        ? Icons.cloud_sync_rounded
+        : (widget.isReceived ? Icons.cloud_download_rounded : Icons.cloud_done_rounded);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              statusIcon,
+              color: colors.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Shared World',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Last Synced: $formattedSyncTime',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 180,
+            child: ExpressiveButtonRow(
+              spacing: 3.0,
+              weights: <double>[
+                1.5 + (1.5 * widget.activeSyncProgresses[0]),
+                1.5 + (1.5 * widget.activeSyncProgresses[1]),
+              ],
+              children: <Widget>[
+                MaterialExpressiveButton(
+                  onPressed: widget.isSyncing ? null : widget.onPullPressed,
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Pull'),
+                  backgroundColor: colors.secondaryContainer,
+                  foregroundColor: colors.onSecondaryContainer,
+                  pressedBackgroundColor: colors.secondary,
+                  pressedForegroundColor: colors.onSecondary,
+                  expanded: true,
+                  isActive: widget.activeSyncMode == 'pull',
+                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0
+                      ? 0.0
+                      : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  hideLabelWhenInactive: widget.isSyncing,
+                  onPressStateChanged: (bool isPressed) {
+                    setState(() {
+                      _pressedButtonIndex = isPressed ? 0 : null;
+                    });
+                  },
+                  borderRadiusBuilder: (double radius) {
+                    return BorderRadius.only(
+                      topLeft: Radius.circular(radius),
+                      bottomLeft: Radius.circular(radius),
+                      topRight: Radius.circular(radius * 0.3),
+                      bottomRight: Radius.circular(radius * 0.3),
+                    );
+                  },
+                ),
+                MaterialExpressiveButton(
+                  onPressed: widget.isSyncing ? null : widget.onPushPressed,
+                  icon: const Icon(Icons.upload_rounded),
+                  label: const Text('Push'),
+                  backgroundColor: colors.tertiaryContainer,
+                  foregroundColor: colors.onTertiaryContainer,
+                  pressedBackgroundColor: colors.tertiary,
+                  pressedForegroundColor: colors.onTertiary,
+                  expanded: true,
+                  isActive: widget.activeSyncMode == 'push',
+                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1
+                      ? 0.0
+                      : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+                  hideLabelWhenInactive: widget.isSyncing,
+                  onPressStateChanged: (bool isPressed) {
+                    setState(() {
+                      _pressedButtonIndex = isPressed ? 1 : null;
+                    });
+                  },
+                  borderRadiusBuilder: (double radius) {
+                    return BorderRadius.only(
+                      topLeft: Radius.circular(radius * 0.3),
+                      bottomLeft: Radius.circular(radius * 0.3),
+                      topRight: Radius.circular(radius),
+                      bottomRight: Radius.circular(radius),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final DateTime local = dateTime.toLocal();
+    return '${local.month}/${local.day}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+}
+

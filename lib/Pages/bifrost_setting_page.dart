@@ -601,10 +601,17 @@ class _SettingsPageState extends State<SettingsPage>
                             },
                           ),
                           const Divider(height: 24, thickness: 0.5),
+                          Text(
+                            'Shared Worlds',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Shared Worlds'),
+                            title: const Text('Manage Shared Worlds'),
                             subtitle: const Text(
                               'Download co-op worlds shared by your friends',
                             ),

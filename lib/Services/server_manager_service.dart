@@ -1077,6 +1077,9 @@ class ServerManagerService extends ChangeNotifier {
         await sendServerCommand(server: server, command: 'save-on');
       }
 
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? existingFileId = prefs.getString('gdrive_file_id_${server.path}');
+
       final String fileId = await GoogleDriveSyncService.instance.uploadWorldSyncFile(
         serverName: server.name,
         zipFile: zipFile,
@@ -1084,12 +1087,21 @@ class ServerManagerService extends ChangeNotifier {
         version: server.version,
         type: server.type,
         memoryLabel: server.memoryLabel,
+        existingFileId: existingFileId,
       );
 
       final DateTime now = DateTime.now();
       _lastSyncTimeByServerPath[server.path] = now;
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString('gdrive_last_sync_${server.path}', now.toIso8601String());
+      await prefs.setString('gdrive_file_id_${server.path}', fileId);
+      final bool wasReceived = prefs.getBool('gdrive_is_received_${server.path}') ?? false;
+      await prefs.setBool('gdrive_is_received_${server.path}', wasReceived);
+      if (!wasReceived) {
+        final currentUserEmail = GoogleDriveSyncService.instance.currentUser?.email;
+        if (currentUserEmail != null) {
+          await prefs.setString('gdrive_owner_email_${server.path}', currentUserEmail);
+        }
+      }
 
       return 'Successfully backed up world to Google Drive! File ID: $fileId';
     } catch (e) {
@@ -1153,10 +1165,21 @@ class ServerManagerService extends ChangeNotifier {
 
       await ZipUtility.unzipFile(zipFile, worldDir);
 
+      final String? ownerEmail = await GoogleDriveSyncService.instance.getFileOwnerEmail(fileId);
+      final currentUserEmail = GoogleDriveSyncService.instance.currentUser?.email;
+      final bool isReceived = ownerEmail != null &&
+          currentUserEmail != null &&
+          ownerEmail.toLowerCase() != currentUserEmail.toLowerCase();
+
       final DateTime now = DateTime.now();
       _lastSyncTimeByServerPath[server.path] = now;
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString('gdrive_last_sync_${server.path}', now.toIso8601String());
+      await prefs.setString('gdrive_file_id_${server.path}', fileId);
+      await prefs.setBool('gdrive_is_received_${server.path}', isReceived);
+      if (ownerEmail != null) {
+        await prefs.setString('gdrive_owner_email_${server.path}', ownerEmail);
+      }
 
       return 'Successfully downloaded and synced world from Google Drive!';
     } catch (e) {

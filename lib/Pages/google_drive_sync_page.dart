@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Services/google_drive_sync_service.dart';
@@ -35,6 +38,9 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
   List<drive.Permission> _currentPermissions = <drive.Permission>[];
   String? _currentFileId;
 
+  double _totalRamMb = 4096;
+  bool _isCheckingAuth = true;
+
   @override
   void initState() {
     super.initState();
@@ -48,13 +54,53 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
       }
     });
     _loadSettings();
+    _loadDeviceRam();
     if (_driveService.currentUser != null) {
+      setState(() {
+        _isCheckingAuth = false;
+      });
       _loadDriveData();
     } else {
       _driveService.signInSilently().then((user) {
-        if (user != null && mounted) {
-          _loadDriveData();
+        if (mounted) {
+          setState(() {
+            _isCheckingAuth = false;
+          });
+          if (user != null) {
+            _loadDriveData();
+          }
         }
+      });
+    }
+  }
+
+  Future<void> _loadDeviceRam() async {
+    if (AddServerWindow.cachedTotalRamMb != null) {
+      if (mounted) {
+        setState(() {
+          _totalRamMb = AddServerWindow.cachedTotalRamMb!;
+        });
+      }
+      return;
+    }
+
+    try {
+      double total = 4096;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        if (androidInfo.physicalRamSize > 0) {
+          total = androidInfo.physicalRamSize.toDouble();
+        }
+      }
+      AddServerWindow.cachedTotalRamMb = total;
+    } catch (_) {
+      AddServerWindow.cachedTotalRamMb = 4096;
+    }
+
+    if (mounted) {
+      setState(() {
+        _totalRamMb = AddServerWindow.cachedTotalRamMb!;
       });
     }
   }
@@ -327,56 +373,144 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
     }
   }
 
+  double _parseMemoryLabelToMb(String label) {
+    try {
+      final clean = label.toUpperCase().replaceAll('GB', '').replaceAll('MB', '').trim();
+      final value = double.parse(clean);
+      if (label.toUpperCase().contains('GB')) {
+        return value * 1024;
+      }
+      return value;
+    } catch (_) {
+      return 2048;
+    }
+  }
+
+  String _formatRamLabel(double mb) {
+    final double gb = mb / 1024;
+    if (gb == gb.roundToDouble()) {
+      return '${gb.toInt()} GB';
+    }
+    return '${gb.toStringAsFixed(1)} GB';
+  }
+
   Future<void> _importAndCreateFriendWorld(drive.File file) async {
     final metadata = _parseBifrostMetadata(file.description);
     
     final String serverName = metadata?['serverName'] ?? _cleanFileName(file.name ?? 'shared_world');
     final String version = metadata?['version'] ?? '1.20.1';
     final String type = metadata?['type'] ?? 'Vanilla';
-    final String memoryLabel = metadata?['memoryLabel'] ?? '2.0 GB';
+    final String originalMemoryLabel = metadata?['memoryLabel'] ?? '2.0 GB';
+
+    double chosenRamMb = _parseMemoryLabelToMb(originalMemoryLabel);
+    chosenRamMb = (chosenRamMb / 512).round() * 512.0;
+
+    final double sliderMin = 512.0;
+    final double sliderMax = ((_totalRamMb / 512).ceil() * 512.0).clamp(512.0, double.infinity);
+    final int divisions = ((sliderMax - sliderMin) / 512).round().clamp(1, 256);
+
+    chosenRamMb = chosenRamMb.clamp(sliderMin, sliderMax);
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
         final colors = Theme.of(context).colorScheme;
-        return AlertDialog(
-          icon: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.cloud_download_rounded,
-              color: colors.onPrimaryContainer,
-            ),
-          ),
-          title: const Text('Setup Server Automatically?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('This will download the world and automatically configure a Minecraft server:'),
-              const SizedBox(height: 12),
-              Text('• Name: $serverName', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('• Version: $version', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('• Type: $type', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('• Memory: $memoryLabel', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const Text('ArcadeLabs Bifrost will download the server binary (.jar) and setup the directories automatically.'),
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Download & Setup'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              icon: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.cloud_download_rounded,
+                  color: colors.onPrimaryContainer,
+                ),
+              ),
+              title: const Text('Setup Server Automatically?'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('This will download the world and automatically configure a Minecraft server:'),
+                  const SizedBox(height: 12),
+                  Text('• Name: $serverName', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('• Version: $version', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('• Type: $type', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  
+                  Text(
+                    'Select Allocated RAM:',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Memory:',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        _formatRamLabel(chosenRamMb),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    min: sliderMin,
+                    max: sliderMax,
+                    divisions: divisions,
+                    value: chosenRamMb,
+                    label: _formatRamLabel(chosenRamMb),
+                    onChanged: (double value) {
+                      setDialogState(() {
+                        chosenRamMb = value;
+                      });
+                    },
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatRamLabel(sliderMin),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.outline),
+                      ),
+                      Text(
+                        'Device Total: ${_formatRamLabel(_totalRamMb)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.outline),
+                      ),
+                      Text(
+                        _formatRamLabel(sliderMax),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.outline),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'ArcadeLabs Bifrost will download the server binary (.jar) and setup the directories automatically.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Download & Setup'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -387,11 +521,13 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
       _isPerformingAction = true;
     });
 
+    final chosenMemoryLabel = _formatRamLabel(chosenRamMb);
+
     final result = await widget.serverManager.createAndSyncServerFromSharedFile(
       name: serverName,
       version: version,
       type: type,
-      memoryLabel: memoryLabel,
+      memoryLabel: chosenMemoryLabel,
       fileId: file.id!,
     );
 
@@ -443,9 +579,11 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: _isCheckingAuth
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
           if (_statusMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(12),

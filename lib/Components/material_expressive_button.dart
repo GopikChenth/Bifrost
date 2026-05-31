@@ -19,6 +19,7 @@ class MaterialExpressiveButton extends StatefulWidget {
     this.hideLabelWhenInactive = false,
     this.onPressStateChanged,
     this.onActiveProgressChanged,
+    this.borderRadiusBuilder,
   });
 
   final Widget icon;
@@ -35,6 +36,7 @@ class MaterialExpressiveButton extends StatefulWidget {
   final bool hideLabelWhenInactive;
   final ValueChanged<bool>? onPressStateChanged;
   final ValueChanged<double>? onActiveProgressChanged;
+  final BorderRadiusGeometry Function(double radius)? borderRadiusBuilder;
 
   @override
   State<MaterialExpressiveButton> createState() =>
@@ -299,7 +301,9 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: currentBgColor,
-            borderRadius: BorderRadius.circular(radius.clamp(0.0, double.infinity)),
+            borderRadius: widget.borderRadiusBuilder != null
+                ? widget.borderRadiusBuilder!(radius)
+                : BorderRadius.circular(radius.clamp(0.0, double.infinity)),
           ),
           child: TweenAnimationBuilder<Color?>(
             duration: colorAnimationDuration,
