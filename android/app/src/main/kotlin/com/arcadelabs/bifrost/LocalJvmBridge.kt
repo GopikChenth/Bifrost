@@ -21,6 +21,8 @@ object LocalJvmBridge {
 
     external fun getJVMOutput(): String
 
+    external fun getJVMOutputIncremental(lastTotalRead: Long): Array<Any>
+
     external fun setLdLibraryPath(ldLibraryPath: String)
 
     external fun dlopen(name: String): Boolean

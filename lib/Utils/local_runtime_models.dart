@@ -86,3 +86,23 @@ class LocalServerStatus {
     );
   }
 }
+
+class LocalConsoleOutput {
+  const LocalConsoleOutput({
+    required this.output,
+    required this.totalWritten,
+    required this.reset,
+  });
+
+  final String output;
+  final int totalWritten;
+  final bool reset;
+
+  factory LocalConsoleOutput.fromMap(Map<Object?, Object?> map) {
+    return LocalConsoleOutput(
+      output: map['output'] as String? ?? '',
+      totalWritten: map['totalWritten'] as int? ?? 0,
+      reset: map['reset'] as bool? ?? false,
+    );
+  }
+}

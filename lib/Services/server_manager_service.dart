@@ -63,6 +63,8 @@ class ServerManagerService extends ChangeNotifier {
 
   final List<BifrostServer> _servers = <BifrostServer>[];
   final Map<String, String> _consoleOutputByServerPath = <String, String>{};
+  final Map<String, int> _consoleOffsetsByServerPath = <String, int>{};
+  final Map<String, bool> _consoleFetchInFlightByServerPath = <String, bool>{};
   final Map<String, Set<String>> _knownPlayersByServerPath =
       <String, Set<String>>{};
   Timer? _serverStatusPollTimer;
@@ -422,6 +424,8 @@ class ServerManagerService extends ChangeNotifier {
       return;
     }
 
+    _consoleOutputByServerPath[server.path] = '';
+    _consoleOffsetsByServerPath[server.path] = 0;
     _onlinePlayersByServerPath[server.path] = <String>{};
     await _saveLastStartedServerPath(server.path);
     _updateNativeNotification(server);
@@ -571,18 +575,49 @@ class ServerManagerService extends ChangeNotifier {
 
   Future<void> refreshServerStatusFor(String serverPath) async {
     try {
-      final LocalServerStatus status = await _localRuntimeService
-          .getServerStatus();
-      final String? activeServerPath = status.activeServerPath;
-      final String targetServerPath =
-          _servers.any(
-            (BifrostServer server) => server.path == activeServerPath,
-          )
-          ? activeServerPath!
-          : serverPath;
-      _applyServerStatus(serverPath: targetServerPath, status: status);
+      final LocalServerStatus status = await _localRuntimeService.getServerStatus();
+      final String activeServerPath = status.activeServerPath ?? serverPath;
+      _applyServerStatus(serverPath: activeServerPath, status: status);
+
+      if (status.state != 'idle' && status.state != 'stopped') {
+        await fetchConsoleDeltasFor(activeServerPath);
+      }
     } catch (_) {
       // A dashboard/terminal refresh should not surface transient channel errors.
+    }
+  }
+
+  Future<void> fetchConsoleDeltasFor(String serverPath) async {
+    if (_consoleFetchInFlightByServerPath[serverPath] == true) {
+      return;
+    }
+    _consoleFetchInFlightByServerPath[serverPath] = true;
+    try {
+      final int lastOffset = _consoleOffsetsByServerPath[serverPath] ?? 0;
+      final LocalConsoleOutput result = await _localRuntimeService.getServerConsoleOutput(lastOffset);
+      
+      final String output = result.output;
+      final int totalWritten = result.totalWritten;
+      final bool reset = result.reset;
+
+      if (reset || totalWritten < lastOffset) {
+        _consoleOutputByServerPath[serverPath] = _capConsoleOutput(output);
+      } else if (output.isNotEmpty) {
+        final String currentBuffer = _consoleOutputByServerPath[serverPath] ?? '';
+        _consoleOutputByServerPath[serverPath] = _capConsoleOutput(currentBuffer + output);
+      }
+
+      _consoleOffsetsByServerPath[serverPath] = totalWritten;
+
+      if (output.isNotEmpty) {
+        _rememberPlayersFromConsole(serverPath, output);
+        _updateOnlinePlayersFromConsole(serverPath, output);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Ignore channel errors during background sync
+    } finally {
+      _consoleFetchInFlightByServerPath[serverPath] = false;
     }
   }
 

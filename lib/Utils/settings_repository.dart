@@ -42,14 +42,19 @@ class AppSettings {
 class SettingsRepository {
   const SettingsRepository();
 
+  static final Future<SharedPreferences> _preferencesFuture =
+      SharedPreferences.getInstance();
+
   static const String _useDefaultDirectoryKey = 'use_default_server_directory';
   static const String _customDirectoryPathKey = 'custom_server_directory_path';
   static const String _disableAnimationsKey = 'disable_animations';
   static const String _appThemeKey = 'app_theme';
   static const String _onboardingCompletedKey = 'onboarding_completed';
 
+  Future<SharedPreferences> get _preferences => _preferencesFuture;
+
   Future<ServerDirectorySettings> loadServerDirectorySettings() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
 
     return ServerDirectorySettings(
       useDefaultDirectory:
@@ -62,7 +67,7 @@ class SettingsRepository {
   Future<void> saveServerDirectorySettings(
     ServerDirectorySettings settings,
   ) async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     await preferences.setBool(
       _useDefaultDirectoryKey,
       settings.useDefaultDirectory,
@@ -74,34 +79,34 @@ class SettingsRepository {
   }
 
   Future<bool> loadDisableAnimations() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     return preferences.getBool(_disableAnimationsKey) ?? false;
   }
 
   Future<void> saveDisableAnimations(bool value) async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     await preferences.setBool(_disableAnimationsKey, value);
     AppSettings.disableAnimations = value;
   }
 
   Future<String> loadAppTheme() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     return preferences.getString(_appThemeKey) ?? 'teal';
   }
 
   Future<void> saveAppTheme(String value) async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     await preferences.setString(_appThemeKey, value);
     AppSettings.themeNotifier.value = value;
   }
 
   Future<bool> loadOnboardingCompleted() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     return preferences.getBool(_onboardingCompletedKey) ?? false;
   }
 
   Future<void> saveOnboardingCompleted(bool value) async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await _preferences;
     await preferences.setBool(_onboardingCompletedKey, value);
   }
 }

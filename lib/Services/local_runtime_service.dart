@@ -81,6 +81,22 @@ class LocalRuntimeService {
     }
   }
 
+  Future<LocalConsoleOutput> getServerConsoleOutput(int lastTotalRead) async {
+    try {
+      final Map<Object?, Object?>? result = await _channel
+          .invokeMapMethod<Object?, Object?>('getServerConsoleOutput', <String, Object?>{
+        'lastTotalRead': lastTotalRead,
+      });
+      return LocalConsoleOutput.fromMap(
+        result ?? <Object?, Object?>{},
+      );
+    } on PlatformException catch (error) {
+      throw LocalRuntimeServiceException(
+        error.message ?? 'Unable to inspect the server console output.',
+      );
+    }
+  }
+
   Future<LocalServerStatus> startServer({
     required String serverPath,
     required String jarPath,

@@ -354,8 +354,17 @@ class LocalRuntimeManager(
             "activeServerPath" to activeServerPath,
             "lastExitCode" to lastExitCode,
             "lastMessage" to lastMessage.get(),
-            "consoleOutput" to LocalJvmBridge.getJVMOutput(),
+            "consoleOutput" to "",
             "memoryUsageMb" to memoryMb,
+        )
+    }
+
+    fun getServerConsoleOutput(lastTotalRead: Long): Map<String, Any?> {
+        val result = LocalJvmBridge.getJVMOutputIncremental(lastTotalRead)
+        return mapOf(
+            "output" to (result[0] as String),
+            "totalWritten" to (result[1] as Long),
+            "reset" to (result[2] as Boolean)
         )
     }
 

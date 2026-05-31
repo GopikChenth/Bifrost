@@ -33,7 +33,10 @@ class _TerminalPageState extends State<TerminalPage> {
     widget.serverManager.addListener(_refresh);
     widget.serverManager.refreshServerStatusFor(widget.serverPath);
     _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      widget.serverManager.refreshServerStatusFor(widget.serverPath);
+      final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+      if (server != null && (server.isOnline || server.isBusy)) {
+        widget.serverManager.fetchConsoleDeltasFor(widget.serverPath);
+      }
     });
   }
 

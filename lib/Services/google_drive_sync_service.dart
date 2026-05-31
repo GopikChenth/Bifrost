@@ -246,5 +246,47 @@ class GoogleDriveSyncService {
       return null;
     }
   }
+
+  /// Fetches a single sync file's metadata by its file ID.
+  Future<drive.File?> getSyncFileById(String fileId) async {
+    final driveApi = await _getDriveApi();
+    if (driveApi == null) {
+      return null;
+    }
+    try {
+      final file = await driveApi.files.get(
+        fileId,
+        $fields: 'id, name, owners(displayName, emailAddress), modifiedTime, size, description',
+      ) as drive.File;
+      return file;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Searches for a single sync file matching the exact filename (escaped and limited to 1 result).
+  Future<drive.File?> getSyncFileByName(String filename) async {
+    final driveApi = await _getDriveApi();
+    if (driveApi == null) {
+      return null;
+    }
+    try {
+      final String escaped = filename.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+      final response = await driveApi.files.list(
+        q: "name = '$escaped' and mimeType = 'application/zip' and (sharedWithMe = true or 'me' in owners) and trashed = false",
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        $fields: 'files(id, name, owners(displayName, emailAddress), modifiedTime, size, description)',
+        pageSize: 1,
+      );
+      if (response.files != null && response.files!.isNotEmpty) {
+        return response.files!.first;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
 }
 

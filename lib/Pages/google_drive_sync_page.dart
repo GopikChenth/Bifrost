@@ -298,14 +298,25 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
 
   Future<void> _importFriendWorld(BifrostServer server, drive.File file) async {
     final String ownerEmail = file.owners?.first.emailAddress ?? 'Unknown';
+    final metadata = _parseBifrostMetadata(file.description);
+    final String? fileVersion = metadata?['version'];
+    final String? fileType = metadata?['type'];
+
+    final bool isMismatch = fileVersion != null && (fileVersion != server.version || fileType != server.type);
+    final String warningText = isMismatch
+        ? '\n\n⚠️ WARNING: Version Mismatch!\n'
+          'The shared world is for $fileType $fileVersion, but your local server is configured for ${server.type} ${server.version}.\n'
+          'Syncing may cause server launch failures or world corruption.'
+        : '';
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Sync world from friend?'),
           content: Text(
-            'This will download and overwrite your current local world with the version shared by $ownerEmail.\n\n'
-            'A local backup of your current world will be saved automatically.',
+            ('This will download and overwrite your current local world with the version shared by $ownerEmail.\n\n'
+            'A local backup of your current world will be saved automatically.') + warningText,
           ),
           actions: <Widget>[
             TextButton(
@@ -319,7 +330,7 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
           ],
         );
       },
-    );
+    ) ?? false;
 
     if (confirm != true) return;
 
@@ -664,6 +675,7 @@ class _GoogleDriveSyncPageState extends State<GoogleDriveSyncPage> {
               cleanName: _cleanFileName,
               formatDateTime: _formatDateTime,
               isGlobal: server == null,
+              server: server,
             ),
           ],
         ],
@@ -1001,6 +1013,7 @@ class _FriendsWorldsCard extends StatelessWidget {
     required this.cleanName,
     required this.formatDateTime,
     required this.isGlobal,
+    this.server,
   });
 
   final List<drive.File> sharedFiles;
@@ -1009,6 +1022,22 @@ class _FriendsWorldsCard extends StatelessWidget {
   final String Function(String name) cleanName;
   final String Function(DateTime? date) formatDateTime;
   final bool isGlobal;
+  final BifrostServer? server;
+
+  Map<String, String>? _parseBifrostMetadata(String? description) {
+    if (description == null) return null;
+    final marker = 'BifrostMetadata:';
+    final index = description.indexOf(marker);
+    if (index == -1) return null;
+    try {
+      final jsonStr = description.substring(index + marker.length).trim();
+      final Map<String, dynamic> decoded = Map<String, dynamic>.from(jsonDecode(jsonStr));
+      return decoded.map((key, value) => MapEntry(key, value.toString()));
+    } catch (e) {
+      debugPrint('Error parsing BifrostMetadata: $e');
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1068,6 +1097,13 @@ class _FriendsWorldsCard extends StatelessWidget {
                   final lastModified = formatDateTime(file.modifiedTime);
                   final double sizeMb = (int.tryParse(file.size ?? '0') ?? 0) / (1024 * 1024);
 
+                  final metadata = _parseBifrostMetadata(file.description);
+                  final fileVersion = metadata?['version'];
+                  final fileType = metadata?['type'];
+
+                  final bool isMismatch = !isGlobal && server != null && fileVersion != null && 
+                      (fileVersion != server!.version || fileType != server!.type);
+
                   return Row(
                     children: [
                       Icon(Icons.public_rounded, size: 36, color: colors.primary),
@@ -1091,6 +1127,24 @@ class _FriendsWorldsCard extends StatelessWidget {
                               'Updated: $lastModified (${sizeMb.toStringAsFixed(2)} MB)',
                               style: theme.textTheme.bodySmall?.copyWith(color: colors.outline),
                             ),
+                            if (isMismatch) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, size: 14, color: colors.error),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      'Version mismatch: $fileType $fileVersion',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: colors.error,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),

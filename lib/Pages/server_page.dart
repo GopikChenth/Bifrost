@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:convert';
 
 import 'package:bifrost/Components/eulawindow.dart';
 import 'package:bifrost/Components/server_navigation_drawer.dart';
@@ -43,6 +44,8 @@ class _ServerPageState extends State<ServerPage>
   bool _isReceived = false;
   String? _fileId;
   String? _ownerEmail;
+  String? _cloudVersion;
+  String? _cloudType;
   bool _isLocalSyncing = false;
   late final List<double> _activeSyncProgresses;
   String? _activeSyncMode;
@@ -51,15 +54,34 @@ class _ServerPageState extends State<ServerPage>
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
   }
 
+  Map<String, String>? _parseBifrostMetadata(String? description) {
+    if (description == null) return null;
+    final marker = 'BifrostMetadata:';
+    final index = description.indexOf(marker);
+    if (index == -1) return null;
+    try {
+      final jsonStr = description.substring(index + marker.length).trim();
+      final Map<String, dynamic> decoded = Map<String, dynamic>.from(jsonDecode(jsonStr));
+      return decoded.map((key, value) => MapEntry(key, value.toString()));
+    } catch (e) {
+      debugPrint('Error parsing BifrostMetadata: $e');
+      return null;
+    }
+  }
+
   Future<void> _checkSharedWorldStatus() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
     if (server == null) return;
 
-    final String? fileId = prefs.getString('gdrive_file_id_${server.path}');
+    // 1. Immediately load and apply cached metadata to avoid any UI blankness.
+    String? fileId = prefs.getString('gdrive_file_id_${server.path}');
     final String? lastSync = prefs.getString('gdrive_last_sync_${server.path}');
     final bool? isReceived = prefs.getBool('gdrive_is_received_${server.path}');
     final String? ownerEmail = prefs.getString('gdrive_owner_email_${server.path}');
+    final int? lastVerified = prefs.getInt('gdrive_last_verified_${server.path}');
+    final String? cloudVersion = prefs.getString('gdrive_version_${server.path}');
+    final String? cloudType = prefs.getString('gdrive_type_${server.path}');
 
     if (fileId != null || lastSync != null) {
       if (mounted) {
@@ -68,9 +90,21 @@ class _ServerPageState extends State<ServerPage>
           _isReceived = isReceived ?? false;
           _fileId = fileId;
           _ownerEmail = ownerEmail;
+          _cloudVersion = cloudVersion;
+          _cloudType = cloudType;
         });
       }
     }
+
+    // 2. TTL expiration check (5 minutes = 300,000 milliseconds)
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (lastVerified != null && (now - lastVerified) < 300000) {
+      return;
+    }
+
+    // 3. Lazy verification: wait 1 second to let page transition finish
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
 
     var googleSignInUser = GoogleDriveSyncService.instance.currentUser;
     if (googleSignInUser == null) {
@@ -78,18 +112,43 @@ class _ServerPageState extends State<ServerPage>
         googleSignInUser = await GoogleDriveSyncService.instance.signInSilently();
       } catch (_) {}
     }
+    if (!mounted) return;
 
     if (googleSignInUser != null) {
       try {
-        final List<drive.File> files = await GoogleDriveSyncService.instance.listAvailableWorldSyncFiles();
         final String expectedName = 'bifrost_sync_${server.name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}.zip';
-        
         drive.File? matchedFile;
-        for (final drive.File file in files) {
-          if (file.name == expectedName) {
-            matchedFile = file;
-            break;
+
+        if (fileId != null) {
+          // Query by cached file ID first
+          matchedFile = await GoogleDriveSyncService.instance.getSyncFileById(fileId);
+          if (!mounted) return;
+
+          if (matchedFile == null) {
+            // File ID failed (e.g. deleted on Drive), clear cached credentials/references and reset status
+            await prefs.remove('gdrive_file_id_${server.path}');
+            await prefs.remove('gdrive_is_received_${server.path}');
+            await prefs.remove('gdrive_owner_email_${server.path}');
+            await prefs.remove('gdrive_version_${server.path}');
+            await prefs.remove('gdrive_type_${server.path}');
+            fileId = null;
+
+            setState(() {
+              _isShared = false;
+              _isReceived = false;
+              _fileId = null;
+              _ownerEmail = null;
+              _cloudVersion = null;
+              _cloudType = null;
+            });
           }
+        }
+
+        // If fileId is null (either because it was never cached or because the ID lookup failed),
+        // query Google Drive by exact filename.
+        if (fileId == null) {
+          matchedFile = await GoogleDriveSyncService.instance.getSyncFileByName(expectedName);
+          if (!mounted) return;
         }
 
         if (matchedFile != null) {
@@ -103,17 +162,49 @@ class _ServerPageState extends State<ServerPage>
           await prefs.setBool('gdrive_is_received_${server.path}', !isOwnedByMe);
           await prefs.setString('gdrive_owner_email_${server.path}', owner);
 
-          if (mounted) {
-            setState(() {
-              _isShared = true;
-              _isReceived = !isOwnedByMe;
-              _fileId = matchedFile?.id;
-              _ownerEmail = owner;
-            });
+          final metadata = _parseBifrostMetadata(matchedFile.description);
+          final String? fileVersion = metadata?['version'];
+          final String? fileType = metadata?['type'];
+
+          if (fileVersion != null) {
+            await prefs.setString('gdrive_version_${server.path}', fileVersion);
+          } else {
+            await prefs.remove('gdrive_version_${server.path}');
           }
+          if (fileType != null) {
+            await prefs.setString('gdrive_type_${server.path}', fileType);
+          } else {
+            await prefs.remove('gdrive_type_${server.path}');
+          }
+
+          setState(() {
+            _isShared = true;
+            _isReceived = !isOwnedByMe;
+            _fileId = matchedFile?.id;
+            _ownerEmail = owner;
+            _cloudVersion = fileVersion;
+            _cloudType = fileType;
+          });
+        } else {
+          // If query by name returns null, just keep _isShared = false (or update UI accordingly),
+          // but do NOT clear unrelated prefs as it could just be a world with no cloud backup yet.
+          setState(() {
+            _isShared = false;
+            _isReceived = false;
+            _fileId = null;
+            _ownerEmail = null;
+            _cloudVersion = null;
+            _cloudType = null;
+          });
         }
+
+        // 4. Update the last verified timestamp ONLY on successful Drive API verification
+        final int verifyEpoch = DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt('gdrive_last_verified_${server.path}', verifyEpoch);
+
       } catch (e) {
         debugPrint('Error verifying sync status: $e');
+        // Do not update gdrive_last_verified on network or API failures, enabling retry next time.
       }
     }
   }
@@ -129,17 +220,24 @@ class _ServerPageState extends State<ServerPage>
       return;
     }
 
+    final bool isMismatch = _cloudVersion != null && (_cloudVersion != server.version || _cloudType != server.type);
+    final String warningText = isMismatch
+        ? '\n\n⚠️ WARNING: Version Mismatch!\n'
+          'The cloud world is for $_cloudType $_cloudVersion, but this server is configured for ${server.type} ${server.version}.\n'
+          'Syncing may cause server launch failures or world corruption.'
+        : '';
+
     final bool confirm = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Sync world from cloud?'),
           content: Text(
-            _isReceived
+            (_isReceived
                 ? 'This will download and overwrite your current local world with the version shared by ${_ownerEmail ?? 'your friend'}.\n\n'
                   'A local backup of your current world will be saved automatically.'
                 : 'This will download and overwrite your local world with your latest backup from Google Drive.\n\n'
-                  'A local backup of your current world will be saved automatically.',
+                  'A local backup of your current world will be saved automatically.') + warningText,
           ),
           actions: <Widget>[
             TextButton(

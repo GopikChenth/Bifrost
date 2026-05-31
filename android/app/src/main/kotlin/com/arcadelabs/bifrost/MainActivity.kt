@@ -313,6 +313,19 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+            "getServerConsoleOutput" -> {
+                try {
+                    val lastTotalRead = call.argument<Number>("lastTotalRead")?.toLong() ?: 0L
+                    result.success(localRuntimeManager.getServerConsoleOutput(lastTotalRead))
+                } catch (error: Exception) {
+                    result.error(
+                        "SERVER_CONSOLE_FAILED",
+                        error.localizedMessage ?: "Unable to inspect the server console output.",
+                        null,
+                    )
+                }
+            }
+
             "startServer" -> {
                 try {
                     val serverPath = call.argument<String>("serverPath")?.trim().orEmpty()

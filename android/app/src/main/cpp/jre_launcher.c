@@ -55,6 +55,7 @@ static volatile sig_atomic_t active_jvm_ready = 0;
 static pthread_mutex_t log_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char jvm_log_buffer[LOG_BUFFER_SIZE];
 static size_t jvm_log_buffer_len = 0;
+static uint64_t jvm_log_total_written = 0;
 
 /* ──────────────────────────────────────────────────────────────────
  * Pipe-based log reader
@@ -101,6 +102,7 @@ static void append_jvm_log_line(const char* line) {
     jvm_log_buffer_len += line_len;
     jvm_log_buffer[jvm_log_buffer_len++] = '\n';
     jvm_log_buffer[jvm_log_buffer_len] = '\0';
+    jvm_log_total_written += line_len + 1;
     pthread_mutex_unlock(&log_buffer_mutex);
 }
 
@@ -704,6 +706,68 @@ Java_com_arcadelabs_bifrost_LocalJvmBridge_getJVMOutput(
     jstring output = (*env)->NewStringUTF(env, jvm_log_buffer);
     pthread_mutex_unlock(&log_buffer_mutex);
     return output;
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_com_arcadelabs_bifrost_LocalJvmBridge_getJVMOutputIncremental(
+    JNIEnv* env,
+    jclass clazz,
+    jlong lastTotalRead
+) {
+    (void) clazz;
+    pthread_mutex_lock(&log_buffer_mutex);
+
+    // If buffer length is 0, reset total written counter (e.g. on JVM restart)
+    if (jvm_log_buffer_len == 0) {
+        jvm_log_total_written = 0;
+    }
+
+    jboolean reset_buffer = JNI_FALSE;
+    uint64_t bytes_to_send = 0;
+
+    // Validate bounds to prevent unsigned underflow
+    if (lastTotalRead < 0 || lastTotalRead > (jlong)jvm_log_total_written) {
+        reset_buffer = JNI_TRUE;
+    } else {
+        bytes_to_send = jvm_log_total_written - (uint64_t)lastTotalRead;
+        if (bytes_to_send > jvm_log_buffer_len) {
+            reset_buffer = JNI_TRUE;
+        }
+    }
+
+    jstring output_string;
+    if (reset_buffer == JNI_TRUE) {
+        output_string = (*env)->NewStringUTF(env, jvm_log_buffer);
+    } else {
+        const char* start_ptr = jvm_log_buffer + (jvm_log_buffer_len - bytes_to_send);
+        output_string = (*env)->NewStringUTF(env, start_ptr);
+    }
+
+    // Wrap outputs in Object[] of size 3:
+    // [0]: String output
+    // [1]: java.lang.Long total_written
+    // [2]: java.lang.Boolean reset
+
+    jclass obj_class = (*env)->FindClass(env, "java/lang/Object");
+    jobjectArray result_array = (*env)->NewObjectArray(env, 3, obj_class, NULL);
+
+    // Box Long
+    jclass long_class = (*env)->FindClass(env, "java/lang/Long");
+    jmethodID long_value_of = (*env)->GetStaticMethodID(env, long_class, "valueOf", "(J)Ljava/lang/Long;");
+    jobject boxed_long = (*env)->CallStaticObjectMethod(env, long_class, long_value_of, (jlong)jvm_log_total_written);
+
+    // Box Boolean
+    jclass bool_class = (*env)->FindClass(env, "java/lang/Boolean");
+    jmethodID bool_value_of = (*env)->GetStaticMethodID(env, bool_class, "valueOf", "(Z)Ljava/lang/Boolean;");
+    jobject boxed_bool = (*env)->CallStaticObjectMethod(env, bool_class, bool_value_of, reset_buffer);
+
+    (*env)->SetObjectArrayElement(env, result_array, 0, output_string);
+    (*env)->SetObjectArrayElement(env, result_array, 1, boxed_long);
+    (*env)->SetObjectArrayElement(env, result_array, 2, boxed_bool);
+
+    pthread_mutex_unlock(&log_buffer_mutex);
+
+    return result_array;
 }
 
 JNIEXPORT jint JNICALL
