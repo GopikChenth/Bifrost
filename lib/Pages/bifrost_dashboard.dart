@@ -32,7 +32,7 @@ class _HomePageState extends State<HomePage>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _serverManager = ServerManagerService()..addListener(_refresh);
+    _serverManager = ServerManagerService();
     _serverManager.loadStoredServers().then((_) {
       if (mounted) {
         if (AppSettings.disableAnimations) {
@@ -45,12 +45,6 @@ class _HomePageState extends State<HomePage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       OnboardingBottomSheet.showIfNeeded(context);
     });
-  }
-
-  void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   void _openSettingsPage() {
@@ -183,9 +177,7 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     _staggerController.dispose();
-    _serverManager
-      ..removeListener(_refresh)
-      ..dispose();
+    _serverManager.dispose();
     super.dispose();
   }
 
@@ -195,205 +187,182 @@ class _HomePageState extends State<HomePage>
     final ColorScheme colors = theme.colorScheme;
 
     return Scaffold(
-      body: _serverManager.isLoadingServers
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: <Widget>[
-                // ── Hero AppBar ─────────────────────────────────
-                SliverAppBar(
-                  pinned: true,
-                  floating: true,
-                  title: Text(
-                    'Bifrost',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: colors.onSurface,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  actions: <Widget>[
-                    IconButton(
-                      onPressed: _openSettingsPage,
-                      icon: const Icon(Icons.settings_rounded),
-                      tooltip: 'Settings',
-                    ),
-                  ],
-                ),
-
-                // ── Content ─────────────────────────────────────
-                if (_serverManager.servers.isEmpty &&
-                    !_serverManager.isCreatingServer)
-                  SliverFillRemaining(
-                    child: _EmptyState(colors: colors, theme: theme),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                    sliver: SliverList.list(
-                      children: <Widget>[
-                        // Download card
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          transitionBuilder:
-                              (Widget child, Animation<double> animation) {
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: SizeTransition(
-                                    sizeFactor: animation,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                          child: _serverManager.isCreatingServer
-                              ? Padding(
-                                  key: const ValueKey<String>('download'),
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: ServerDownloadCard(
-                                    serverName:
-                                        _serverManager
-                                            .activeDownloadServerName ??
-                                        'Preparing server files...',
-                                    fileName:
-                                        _serverManager.activeDownloadFileName,
-                                    progress: _serverManager.downloadProgress,
-                                    progressLabel:
-                                        _serverManager.totalDownloadBytes ==
-                                            null
-                                        ? _formatBytes(
-                                            _serverManager.downloadedBytes,
-                                          )
-                                        : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
-                                    onCancel: _serverManager.cancelCreateServer,
-                                  ),
-                                )
-                              : const SizedBox.shrink(
-                                  key: ValueKey<String>('no-download'),
-                                ),
-                        ),
-
-                        // Server cards with stagger
-                        ..._serverManager.servers.asMap().entries.map((
-                          MapEntry<int, BifrostServer> entry,
-                        ) {
-                          final int index = entry.key;
-                          final BifrostServer server = entry.value;
-                          final int count = _serverManager.servers.length;
-                          final double start = math.min(
-                            index / math.max(count, 1),
-                            0.8,
-                          );
-                          final double end = math.min(start + 0.4, 1.0);
-
-                          return AnimatedBuilder(
-                            animation: _staggerController,
-                            builder: (BuildContext context, Widget? child) {
-                              final double t = Interval(
-                                start,
-                                end,
-                                curve: Curves.easeOutCubic,
-                              ).transform(_staggerController.value);
-                              return Opacity(
-                                opacity: t,
-                                child: Transform.translate(
-                                  offset: Offset(0, 30 * (1 - t)),
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: ServerCard(
-                                name: server.name,
-                                version: server.version,
-                                serverType: server.type,
-                                statusLabel: server.status,
-                                memoryLabel: server.memoryLabel,
-                                serverPath: server.path,
-                                isOnline: server.isOnline,
-                                isBusy:
-                                    _serverManager.isCreatingServer ||
-                                    server.isBusy,
-                                consoleLabel: server.consoleLabel,
-                                runtimeMessage: server.runtimeMessage,
-                                onStartServer: _serverManager.isCreatingServer
-                                    ? null
-                                    : () {
-                                        _startServer(server);
-                                      },
-                                onStopServer: _serverManager.isCreatingServer
-                                    ? null
-                                    : () {
-                                        _serverManager.stopServer(server);
-                                      },
-                                onDelete: _serverManager.isCreatingServer
-                                    ? null
-                                    : () {
-                                        _deleteServer(server);
-                                      },
-                                onOpenDashboard: () {
-                                  _openServerPage(server);
-                                },
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-              ],
+      body: CustomScrollView(
+        slivers: <Widget>[
+          // ── Hero AppBar ─────────────────────────────────
+          SliverAppBar(
+            pinned: true,
+            floating: true,
+            title: Text(
+              'Bifrost',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: colors.onSurface,
+                letterSpacing: -0.5,
+              ),
             ),
-      floatingActionButton: _serverManager.isCreatingServer
-          ? null
-          : BifrostContainerTransform<AddServerResult>(
-              onClosed: (AddServerResult? newServer) async {
-                if (newServer == null) {
-                  return;
-                }
-                if (!context.mounted) {
-                  return;
-                }
+            actions: <Widget>[
+              IconButton(
+                onPressed: _openSettingsPage,
+                icon: const Icon(Icons.settings_rounded),
+                tooltip: 'Settings',
+              ),
+            ],
+          ),
 
-                final String? message = await _serverManager.createServer(
-                  newServer,
+          // ── Content ─────────────────────────────────────
+          ListenableBuilder(
+            listenable: _serverManager,
+            builder: (BuildContext context, Widget? child) {
+              if (_serverManager.isLoadingServers) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
                 );
-                if (!context.mounted) {
-                  return;
-                }
-                if (message == null) {
-                  return;
-                }
+              }
 
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(message)));
-              },
-              closedBuilder:
-                  (BuildContext context, VoidCallback openContainer) {
-                    return FloatingActionButton.extended(
-                      heroTag: null,
-                      onPressed: openContainer,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('New Server'),
+              if (_serverManager.servers.isEmpty && !_serverManager.isCreatingServer) {
+                return SliverFillRemaining(
+                  child: _EmptyState(colors: colors, theme: theme),
+                );
+              }
+
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                sliver: SliverList.builder(
+                  itemCount: _serverManager.servers.length + (_serverManager.isCreatingServer ? 1 : 0),
+                  itemBuilder: (BuildContext context, int index) {
+                    if (_serverManager.isCreatingServer && index == 0) {
+                      return Padding(
+                        key: const ValueKey<String>('download'),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: ServerDownloadCard(
+                          serverName: _serverManager.activeDownloadServerName ?? 'Preparing server files...',
+                          fileName: _serverManager.activeDownloadFileName,
+                          progress: _serverManager.downloadProgress,
+                          progressLabel: _serverManager.totalDownloadBytes == null
+                              ? _formatBytes(_serverManager.downloadedBytes)
+                              : '${_formatBytes(_serverManager.downloadedBytes)} / ${_formatBytes(_serverManager.totalDownloadBytes!)}',
+                          onCancel: _serverManager.cancelCreateServer,
+                        ),
+                      );
+                    }
+
+                    final int serverIndex = _serverManager.isCreatingServer ? index - 1 : index;
+                    final BifrostServer server = _serverManager.servers[serverIndex];
+                    final int count = _serverManager.servers.length;
+                    final double start = math.min(serverIndex / math.max(count, 1), 0.8);
+                    final double end = math.min(start + 0.4, 1.0);
+
+                    return AnimatedBuilder(
+                      animation: _staggerController,
+                      builder: (BuildContext context, Widget? child) {
+                        final double t = Interval(
+                          start,
+                          end,
+                          curve: Curves.easeOutCubic,
+                        ).transform(_staggerController.value);
+                        return Opacity(
+                          opacity: t,
+                          child: Transform.translate(
+                            offset: Offset(0, 30 * (1 - t)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: ServerCard(
+                          name: server.name,
+                          version: server.version,
+                          serverType: server.type,
+                          statusLabel: server.status,
+                          memoryLabel: server.memoryLabel,
+                          serverPath: server.path,
+                          isOnline: server.isOnline,
+                          isBusy: _serverManager.isCreatingServer || server.isBusy,
+                          consoleLabel: server.consoleLabel,
+                          runtimeMessage: server.runtimeMessage,
+                          onStartServer: _serverManager.isCreatingServer
+                              ? null
+                              : () {
+                                  _startServer(server);
+                                },
+                          onStopServer: _serverManager.isCreatingServer
+                              ? null
+                              : () {
+                                  _serverManager.stopServer(server);
+                                },
+                          onDelete: _serverManager.isCreatingServer
+                              ? null
+                              : () {
+                                  _deleteServer(server);
+                                },
+                          onOpenDashboard: () {
+                            _openServerPage(server);
+                          },
+                        ),
+                      ),
                     );
                   },
-              openBuilder: (BuildContext context, VoidCallback closeContainer) {
-                return const AddServerWindow();
-              },
-              openMockBuilder: (BuildContext context) {
-                return const AddServerFlightShuttleMock();
-              },
-              openLayoutWrapper: (BuildContext context, Widget child) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 24,
-                    ),
-                    child: child,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      floatingActionButton: ListenableBuilder(
+        listenable: _serverManager,
+        builder: (BuildContext context, Widget? child) {
+          if (_serverManager.isLoadingServers || _serverManager.isCreatingServer) {
+            return const SizedBox.shrink();
+          }
+          return BifrostContainerTransform<AddServerResult>(
+            onClosed: (AddServerResult? newServer) async {
+              if (newServer == null) {
+                return;
+              }
+              if (!context.mounted) {
+                return;
+              }
+
+              final String? message = await _serverManager.createServer(newServer);
+              if (!context.mounted) {
+                return;
+              }
+              if (message == null) {
+                return;
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+            },
+            closedBuilder: (BuildContext context, VoidCallback openContainer) {
+              return FloatingActionButton.extended(
+                heroTag: null,
+                onPressed: openContainer,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('New Server'),
+              );
+            },
+            openBuilder: (BuildContext context, VoidCallback closeContainer) {
+              return const AddServerWindow();
+            },
+            openMockBuilder: (BuildContext context) {
+              return const AddServerFlightShuttleMock();
+            },
+            openLayoutWrapper: (BuildContext context, Widget child) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 24,
                   ),
-                );
-              },
-            ),
+                  child: child,
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

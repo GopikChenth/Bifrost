@@ -37,8 +37,6 @@ class _ServerPageState extends State<ServerPage>
   String? _localIpAddress;
   bool _isLoadingLocalIp = true;
   late final AnimationController _entranceController;
-  int? _pressedButtonIndex;
-  late final List<double> _activeProgresses;
   Timer? _refreshTimer;
 
   bool _isShared = false;
@@ -51,33 +49,6 @@ class _ServerPageState extends State<ServerPage>
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
-  }
-
-  Future<void> _startServer(BifrostServer server) async {
-    final bool eulaAccepted = await widget.serverManager.isEulaAccepted(server);
-    if (!mounted) {
-      return;
-    }
-
-    if (!eulaAccepted) {
-      final bool accepted = await showEulaWindow(context) ?? false;
-      if (!mounted || !accepted) {
-        return;
-      }
-
-      final String? error = await widget.serverManager.acceptEula(server);
-      if (!mounted) {
-        return;
-      }
-      if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
-        return;
-      }
-    }
-
-    widget.serverManager.startServer(server);
   }
 
   Future<void> _checkSharedWorldStatus() async {
@@ -240,17 +211,10 @@ class _ServerPageState extends State<ServerPage>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
-    _activeProgresses = <double>[
-      server != null && server.isBusy && !server.isOnline ? 1.0 : 0.0,
-      server != null && server.isOnline ? 1.0 : 0.0,
-      0.0,
-    ];
     _activeSyncProgresses = <double>[
       0.0,
       0.0,
     ];
-    widget.serverManager.addListener(_refresh);
     _loadLocalIpAddress();
     _checkSharedWorldStatus();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -271,24 +235,6 @@ class _ServerPageState extends State<ServerPage>
   @override
   void didUpdateWidget(ServerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.serverPath != widget.serverPath || oldWidget.serverManager != widget.serverManager) {
-      oldWidget.serverManager.removeListener(_refresh);
-      widget.serverManager.addListener(_refresh);
-      _refresh();
-    }
-  }
-
-  void _refresh() {
-    if (mounted) {
-      final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
-      if (server != null) {
-        _activeProgresses[0] = server.isBusy && !server.isOnline ? 1.0 : 0.0;
-        _activeProgresses[1] = server.isOnline ? 1.0 : 0.0;
-      }
-      _activeSyncProgresses[0] = _activeSyncMode == 'pull' ? 1.0 : 0.0;
-      _activeSyncProgresses[1] = _activeSyncMode == 'push' ? 1.0 : 0.0;
-      setState(() {});
-    }
   }
 
   Future<void> _loadLocalIpAddress() async {
@@ -343,7 +289,6 @@ class _ServerPageState extends State<ServerPage>
   void dispose() {
     _refreshTimer?.cancel();
     _entranceController.dispose();
-    widget.serverManager.removeListener(_refresh);
     super.dispose();
   }
 
@@ -369,82 +314,75 @@ class _ServerPageState extends State<ServerPage>
 
   @override
   Widget build(BuildContext context) {
-    final BifrostServer? server = widget.serverManager.serverByPath(
-      widget.serverPath,
-    );
-
-    if (server == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Server Dashboard')),
-        body: const Center(child: Text('Server no longer exists.')),
-      );
-    }
-
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
-    final bool canStart = !server.isBusy && !server.isOnline;
-    final bool canStop = server.isOnline;
-    final bool canRestart = server.isOnline && !server.isBusy;
-
-    final int totalSections = _isShared ? 6 : 5;
+    final BifrostServer? initialServer = widget.serverManager.serverByPath(widget.serverPath);
+    final String serverName = initialServer?.name ?? 'Server';
 
     return Scaffold(
-      endDrawer: ServerNavigationDrawer(
-        server: server,
-        selectedIndex: ServerDrawerIndex.dashboard,
-        onOpenDashboard: () {
-          Navigator.of(context).pop();
-        },
-        onOpenPlayers: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<ServerPlayersPage>(
-              builder: (BuildContext context) {
-                return ServerPlayersPage(
-                  serverPath: server.path,
-                  serverManager: widget.serverManager,
-                );
-              },
-            ),
-          );
-        },
-        onOpenWorld: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<WorldPage>(
-              builder: (BuildContext context) {
-                return WorldPage(
-                  serverPath: server.path,
-                  serverManager: widget.serverManager,
-                );
-              },
-            ),
-          );
-        },
-        onOpenTerminal: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<TerminalPage>(
-              builder: (BuildContext context) {
-                return TerminalPage(
-                  serverPath: server.path,
-                  serverManager: widget.serverManager,
-                );
-              },
-            ),
-          );
-        },
-        onOpenSettings: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<ServerSettingsPage>(
-              builder: (BuildContext context) {
-                return ServerSettingsPage(
-                  serverPath: server.path,
-                  serverManager: widget.serverManager,
-                );
-              },
-            ),
+      endDrawer: ListenableBuilder(
+        listenable: widget.serverManager,
+        builder: (BuildContext context, Widget? child) {
+          final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+          if (server == null) {
+            return const SizedBox.shrink();
+          }
+          return ServerNavigationDrawer(
+            server: server,
+            selectedIndex: ServerDrawerIndex.dashboard,
+            onOpenDashboard: () {
+              Navigator.of(context).pop();
+            },
+            onOpenPlayers: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute<ServerPlayersPage>(
+                  builder: (BuildContext context) {
+                    return ServerPlayersPage(
+                      serverPath: server.path,
+                      serverManager: widget.serverManager,
+                    );
+                  },
+                ),
+              );
+            },
+            onOpenWorld: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute<WorldPage>(
+                  builder: (BuildContext context) {
+                    return WorldPage(
+                      serverPath: server.path,
+                      serverManager: widget.serverManager,
+                    );
+                  },
+                ),
+              );
+            },
+            onOpenTerminal: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute<TerminalPage>(
+                  builder: (BuildContext context) {
+                    return TerminalPage(
+                      serverPath: server.path,
+                      serverManager: widget.serverManager,
+                    );
+                  },
+                ),
+              );
+            },
+            onOpenSettings: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute<ServerSettingsPage>(
+                  builder: (BuildContext context) {
+                    return ServerSettingsPage(
+                      serverPath: server.path,
+                      serverManager: widget.serverManager,
+                    );
+                  },
+                ),
+              );
+            },
           );
         },
       ),
@@ -454,13 +392,19 @@ class _ServerPageState extends State<ServerPage>
           icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Back to servers',
         ),
-        title: Text(server.name),
+        title: Text(serverName),
         actions: <Widget>[
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: _StatusPill(
-              label: server.status,
-              isOnline: server.isOnline,
+            child: ListenableBuilder(
+              listenable: widget.serverManager,
+              builder: (BuildContext context, Widget? child) {
+                final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+                return _StatusPill(
+                  label: server?.status ?? 'Offline',
+                  isOnline: server?.isOnline ?? false,
+                );
+              },
             ),
           ),
           Builder(
@@ -476,175 +420,104 @@ class _ServerPageState extends State<ServerPage>
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: <Widget>[
-          _staggeredChild(0, totalSections, _HeroPanel(server: server)),
-          const SizedBox(height: 12),
-          _staggeredChild(
-            1,
-            totalSections,
-            ExpressiveButtonRow(
-              weights: <double>[
-                1.5 + (1.5 * _activeProgresses[0]),
-                1.5 + (1.5 * _activeProgresses[1]),
-                1.5 + (1.5 * _activeProgresses[2]),
-              ],
-              children: <Widget>[
-                MaterialExpressiveButton(
-                  onPressed: canStart
-                      ? () {
-                          _startServer(server);
-                        }
-                      : null,
-                  icon: const Icon(Icons.rocket_launch_rounded),
-                  label: const Text('Start'),
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                  pressedBackgroundColor: colors.primaryContainer,
-                  pressedForegroundColor: colors.onPrimaryContainer,
-                  expanded: true,
-                  isActive: server.isBusy && !server.isOnline,
-                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0 ? 0.0 : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
-                  hideLabelWhenInactive: true,
-                  onPressStateChanged: (bool isPressed) {
-                    setState(() {
-                      _pressedButtonIndex = isPressed ? 0 : null;
-                    });
-                  },
-                  onActiveProgressChanged: (double progress) {
-                    setState(() {
-                      _activeProgresses[0] = progress;
-                    });
-                  },
+      body: ListenableBuilder(
+        listenable: widget.serverManager,
+        builder: (BuildContext context, Widget? child) {
+          final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+
+          if (server == null) {
+            return const Center(child: Text('Server no longer exists.'));
+          }
+
+          final ThemeData theme = Theme.of(context);
+          final ColorScheme colors = theme.colorScheme;
+          final int totalSections = _isShared ? 6 : 5;
+
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: <Widget>[
+              _staggeredChild(0, totalSections, _HeroPanel(server: server)),
+              const SizedBox(height: 12),
+              _staggeredChild(
+                1,
+                totalSections,
+                _ServerControlRow(
+                  server: server,
+                  serverManager: widget.serverManager,
                 ),
-                MaterialExpressiveButton(
-                  onPressed: canStop
-                      ? () {
-                          widget.serverManager.stopServer(server);
-                        }
-                      : null,
-                  icon: const Icon(Icons.stop_circle_rounded),
-                  label: const Text('Stop'),
-                  backgroundColor: colors.errorContainer,
-                  foregroundColor: colors.onErrorContainer,
-                  pressedBackgroundColor: colors.error,
-                  pressedForegroundColor: colors.onError,
-                  expanded: true,
-                  isActive: server.isOnline,
-                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1 ? 0.0 : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
-                  hideLabelWhenInactive: true,
-                  onPressStateChanged: (bool isPressed) {
-                    setState(() {
-                      _pressedButtonIndex = isPressed ? 1 : null;
-                    });
-                  },
-                  onActiveProgressChanged: (double progress) {
-                    setState(() {
-                      _activeProgresses[1] = progress;
-                    });
-                  },
-                ),
-                MaterialExpressiveButton(
-                  onPressed: canRestart
-                      ? () {
-                          widget.serverManager.restartServer(server);
-                        }
-                      : null,
-                  icon: const Icon(Icons.restart_alt_rounded),
-                  label: const Text('Restart'),
-                  backgroundColor: colors.secondaryContainer,
-                  foregroundColor: colors.onSecondaryContainer,
-                  pressedBackgroundColor: colors.secondary,
-                  pressedForegroundColor: colors.onSecondary,
-                  expanded: true,
-                  isActive: server.status == 'Restarting',
-                  siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2 ? 0.0 : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
-                  hideLabelWhenInactive: true,
-                  onPressStateChanged: (bool isPressed) {
-                    setState(() {
-                      _pressedButtonIndex = isPressed ? 2 : null;
-                    });
-                  },
-                  onActiveProgressChanged: (double progress) {
-                    setState(() {
-                      _activeProgresses[2] = progress;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-          if (_isShared) ...[
-            const SizedBox(height: 12),
-            _staggeredChild(
-              2,
-              totalSections,
-              _CloudSyncPanel(
-                server: server,
-                isReceived: _isReceived,
-                ownerEmail: _ownerEmail,
-                lastSyncTime: widget.serverManager.lastSyncTimeFor(server.path),
-                isSyncing: _isLocalSyncing || widget.serverManager.isSyncing,
-                activeSyncMode: _activeSyncMode,
-                activeSyncProgresses: _activeSyncProgresses,
-                onPullPressed: () => _syncPull(server),
-                onPushPressed: () => _syncPush(server),
               ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          _staggeredChild(
-            _isShared ? 3 : 2,
-            totalSections,
-            _LocalNetworkPanel(
-              isLoading: _isLoadingLocalIp,
-              ipAddress: _localIpAddress,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _staggeredChild(
-            _isShared ? 4 : 3,
-            totalSections,
-            _ServerDetailsPanel(
-              server: server,
-              serverManager: widget.serverManager,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _staggeredChild(
-            _isShared ? 5 : 4,
-            totalSections,
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Runtime Message',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Text(
-                    server.runtimeMessage?.trim().isNotEmpty == true
-                        ? server.runtimeMessage!
-                        : 'No runtime message yet.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
+              if (_isShared) ...[
+                const SizedBox(height: 12),
+                _staggeredChild(
+                  2,
+                  totalSections,
+                  _CloudSyncPanel(
+                    server: server,
+                    isReceived: _isReceived,
+                    ownerEmail: _ownerEmail,
+                    lastSyncTime: widget.serverManager.lastSyncTimeFor(server.path),
+                    isSyncing: _isLocalSyncing || widget.serverManager.isSyncing,
+                    activeSyncMode: _activeSyncMode,
+                    activeSyncProgresses: _activeSyncProgresses,
+                    onPullPressed: () => _syncPull(server),
+                    onPushPressed: () => _syncPush(server),
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
+              const SizedBox(height: 12),
+              _staggeredChild(
+                _isShared ? 3 : 2,
+                totalSections,
+                _LocalNetworkPanel(
+                  isLoading: _isLoadingLocalIp,
+                  ipAddress: _localIpAddress,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _staggeredChild(
+                _isShared ? 4 : 3,
+                totalSections,
+                _ServerDetailsPanel(
+                  server: server,
+                  serverManager: widget.serverManager,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _staggeredChild(
+                _isShared ? 5 : 4,
+                totalSections,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Runtime Message',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(
+                        server.runtimeMessage?.trim().isNotEmpty == true
+                            ? server.runtimeMessage!
+                            : 'No runtime message yet.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1166,3 +1039,172 @@ class _CloudSyncPanelState extends State<_CloudSyncPanel> {
   }
 }
 
+class _ServerControlRow extends StatefulWidget {
+  const _ServerControlRow({
+    required this.server,
+    required this.serverManager,
+  });
+
+  final BifrostServer server;
+  final ServerManagerService serverManager;
+
+  @override
+  State<_ServerControlRow> createState() => _ServerControlRowState();
+}
+
+class _ServerControlRowState extends State<_ServerControlRow> {
+  int? _pressedButtonIndex;
+  late final List<double> _activeProgresses;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeProgresses = <double>[
+      widget.server.isBusy && !widget.server.isOnline ? 1.0 : 0.0,
+      widget.server.isOnline ? 1.0 : 0.0,
+      0.0,
+    ];
+  }
+
+  @override
+  void didUpdateWidget(_ServerControlRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _activeProgresses[0] = widget.server.isBusy && !widget.server.isOnline ? 1.0 : 0.0;
+    _activeProgresses[1] = widget.server.isOnline ? 1.0 : 0.0;
+  }
+
+  Future<void> _startServer(BuildContext context, BifrostServer server) async {
+    final bool eulaAccepted = await widget.serverManager.isEulaAccepted(server);
+    if (!context.mounted) {
+      return;
+    }
+
+    if (!eulaAccepted) {
+      final bool accepted = await showEulaWindow(context) ?? false;
+      if (!context.mounted || !accepted) {
+        return;
+      }
+
+      final String? error = await widget.serverManager.acceptEula(server);
+      if (!context.mounted) {
+        return;
+      }
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+        return;
+      }
+    }
+
+    widget.serverManager.startServer(server);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final BifrostServer server = widget.server;
+
+    final bool canStart = !server.isBusy && !server.isOnline;
+    final bool canStop = server.isOnline;
+    final bool canRestart = server.isOnline && !server.isBusy;
+
+    return ExpressiveButtonRow(
+      weights: <double>[
+        1.5 + (1.5 * _activeProgresses[0]),
+        1.5 + (1.5 * _activeProgresses[1]),
+        1.5 + (1.5 * _activeProgresses[2]),
+      ],
+      children: <Widget>[
+        MaterialExpressiveButton(
+          onPressed: canStart
+              ? () {
+                  _startServer(context, server);
+                }
+              : null,
+          icon: const Icon(Icons.rocket_launch_rounded),
+          label: const Text('Start'),
+          backgroundColor: colors.primary,
+          foregroundColor: colors.onPrimary,
+          pressedBackgroundColor: colors.primaryContainer,
+          pressedForegroundColor: colors.onPrimaryContainer,
+          expanded: true,
+          isActive: server.isBusy && !server.isOnline,
+          siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 0
+              ? 0.0
+              : (0 < _pressedButtonIndex! ? -1.0 : 1.0),
+          hideLabelWhenInactive: true,
+          onPressStateChanged: (bool isPressed) {
+            setState(() {
+              _pressedButtonIndex = isPressed ? 0 : null;
+            });
+          },
+          onActiveProgressChanged: (double progress) {
+            setState(() {
+              _activeProgresses[0] = progress;
+            });
+          },
+        ),
+        MaterialExpressiveButton(
+          onPressed: canStop
+              ? () {
+                  widget.serverManager.stopServer(server);
+                }
+              : null,
+          icon: const Icon(Icons.stop_circle_rounded),
+          label: const Text('Stop'),
+          backgroundColor: colors.errorContainer,
+          foregroundColor: colors.onErrorContainer,
+          pressedBackgroundColor: colors.error,
+          pressedForegroundColor: colors.onError,
+          expanded: true,
+          isActive: server.isOnline,
+          siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 1
+              ? 0.0
+              : (1 < _pressedButtonIndex! ? -1.0 : 1.0),
+          hideLabelWhenInactive: true,
+          onPressStateChanged: (bool isPressed) {
+            setState(() {
+              _pressedButtonIndex = isPressed ? 1 : null;
+            });
+          },
+          onActiveProgressChanged: (double progress) {
+            setState(() {
+              _activeProgresses[1] = progress;
+            });
+          },
+        ),
+        MaterialExpressiveButton(
+          onPressed: canRestart
+              ? () {
+                  widget.serverManager.restartServer(server);
+                }
+              : null,
+          icon: const Icon(Icons.restart_alt_rounded),
+          label: const Text('Restart'),
+          backgroundColor: colors.secondaryContainer,
+          foregroundColor: colors.onSecondaryContainer,
+          pressedBackgroundColor: colors.secondary,
+          pressedForegroundColor: colors.onSecondary,
+          expanded: true,
+          isActive: server.status == 'Restarting',
+          siblingDirection: _pressedButtonIndex == null || _pressedButtonIndex == 2
+              ? 0.0
+              : (2 < _pressedButtonIndex! ? -1.0 : 1.0),
+          hideLabelWhenInactive: true,
+          onPressStateChanged: (bool isPressed) {
+            setState(() {
+              _pressedButtonIndex = isPressed ? 2 : null;
+            });
+          },
+          onActiveProgressChanged: (double progress) {
+            setState(() {
+              _activeProgresses[2] = progress;
+            });
+          },
+        ),
+      ],
+    );
+  }
+}

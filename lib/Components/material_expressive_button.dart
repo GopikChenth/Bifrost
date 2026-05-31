@@ -51,6 +51,7 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
 
   bool _isPressed = false;
   DateTime? _pressStartTime;
+  bool _isFocused = false;
 
   // Material 3 Expressive spring physics parameters:
   // _pressSpring: Stiff and highly damped for immediate physical response on touch down
@@ -304,6 +305,15 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
             borderRadius: widget.borderRadiusBuilder != null
                 ? widget.borderRadiusBuilder!(radius)
                 : BorderRadius.circular(radius.clamp(0.0, double.infinity)),
+            boxShadow: _isFocused
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: colors.primary.withValues(alpha: 0.4),
+                      blurRadius: 8.0,
+                      spreadRadius: 2.0,
+                    ),
+                  ]
+                : null,
           ),
           child: TweenAnimationBuilder<Color?>(
             duration: colorAnimationDuration,
@@ -317,6 +327,11 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
                   onTapDown: isEnabled ? _handleTapDown : null,
                   onTapCancel: isEnabled ? _handleTapCancel : null,
                   onTapUp: isEnabled ? _handleTapUp : null,
+                  onFocusChange: (bool focused) {
+                    setState(() {
+                      _isFocused = focused;
+                    });
+                  },
                   child: Padding(
                     padding: EdgeInsets.symmetric(
                       horizontal: horizontalPadding,
@@ -352,6 +367,16 @@ class _MaterialExpressiveButtonState extends State<MaterialExpressiveButton>
         child: result,
       );
     }
+
+    final String? semanticsLabel = widget.tooltip ??
+        (widget.label is Text ? (widget.label as Text).data : null);
+
+    result = Semantics(
+      button: true,
+      enabled: isEnabled,
+      label: semanticsLabel,
+      child: result,
+    );
 
     return result;
   }

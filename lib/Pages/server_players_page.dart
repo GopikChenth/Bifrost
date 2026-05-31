@@ -697,7 +697,7 @@ class _PlayerAccessListPageState extends State<PlayerAccessListPage> {
                                 ? null
                                 : () => _modifyEntry(value, false),
                             icon: const Icon(Icons.delete_rounded),
-                            color: Colors.red.shade700,
+                            color: Theme.of(context).colorScheme.error,
                           ),
                         ],
                       ),

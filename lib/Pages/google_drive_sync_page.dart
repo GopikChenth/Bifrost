@@ -700,10 +700,10 @@ class _AccountConnectionCard extends StatelessWidget {
         child: Column(
           children: [
             if (user == null) ...[
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 36,
-                backgroundColor: Colors.blueAccent,
-                child: Icon(Icons.cloud_queue_rounded, size: 40, color: Colors.white),
+                backgroundColor: colors.primaryContainer,
+                child: Icon(Icons.cloud_queue_rounded, size: 40, color: colors.onPrimaryContainer),
               ),
               const SizedBox(height: 16),
               Text(
@@ -851,10 +851,10 @@ class _SyncControlsCard extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: isSyncing ? null : onSyncNow,
                 icon: isSyncing
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: colors.onPrimary),
                       )
                     : const Icon(Icons.cloud_upload_rounded),
                 label: Text(isSyncing ? 'Syncing...' : 'Sync Now'),
@@ -937,10 +937,10 @@ class _ShareSectionCard extends StatelessWidget {
                 IconButton.filled(
                   onPressed: isSharing ? null : onShare,
                   icon: isSharing
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: colors.onPrimary),
                         )
                       : const Icon(Icons.person_add_alt_1_rounded),
                   style: IconButton.styleFrom(

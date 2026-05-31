@@ -471,8 +471,8 @@ class _AddServerWindowState extends State<AddServerWindow> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.error,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -480,7 +480,7 @@ class _AddServerWindowState extends State<AddServerWindow> {
                               Text(
                                 'Using fallback RAM value',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.red,
+                                  color: Theme.of(context).colorScheme.error,
                                 ),
                               ),
                             ],
@@ -651,8 +651,8 @@ class AddServerFlightShuttleMock extends StatelessWidget {
                             Container(
                               width: 8,
                               height: 8,
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.error,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -660,7 +660,7 @@ class AddServerFlightShuttleMock extends StatelessWidget {
                             Text(
                               'Using fallback RAM value',
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.red,
+                                color: Theme.of(context).colorScheme.error,
                               ),
                             ),
                           ],
