@@ -82,6 +82,51 @@ class ClassicTealTheme implements BifrostTheme {
       );
 }
 
+/// 3. Tactical HUD Theme Module (Battlefield 2042 inspired)
+class TacticalHudTheme implements BifrostTheme {
+  @override
+  String get id => 'tactical';
+
+  @override
+  String get name => 'Tactical HUD';
+
+  @override
+  Color get previewColor => const Color(0xFF4CFEE6);
+
+  @override
+  Color? get scaffoldBackgroundColor => const Color(0xFF000000); // OLED Black
+
+  @override
+  ColorScheme get colorScheme => ColorScheme(
+        brightness: Brightness.dark,
+        primary: const Color(0xFF24FCDE),
+        onPrimary: const Color(0xFF000000),
+        primaryContainer: const Color(0xFF0E3835),
+        onPrimaryContainer: const Color(0xFFA2FEF2),
+        secondary: const Color(0xFF588094),
+        onSecondary: const Color(0xFFFFFFFF),
+        secondaryContainer: const Color(0xFF1B2931),
+        onSecondaryContainer: const Color(0xFFB4CCD9),
+        surface: const Color(0xFF0B0F13),
+        onSurface: const Color(0xFFFFFFFF),
+        onSurfaceVariant: const Color(0xFF9CB4C2),
+        outline: const Color(0xFF2C3B47),
+        outlineVariant: const Color(0xFF1F2B34),
+        error: const Color(0xFFFF4328), // Battlefield enemy orange-red
+        onError: const Color(0xFFFFFFFF),
+        errorContainer: const Color(0xFF3D120D),
+        onErrorContainer: const Color(0xFFFFB4AB),
+        tertiary: const Color(0xFFFFD60A), // Tactical warning yellow
+        onTertiary: const Color(0xFF000000),
+        tertiaryContainer: const Color(0xFF3A3000),
+        onTertiaryContainer: const Color(0xFFFFE66D),
+        surfaceContainerLowest: const Color(0xFF05070A),
+        surfaceContainerLow: const Color(0xFF0B0F13),
+        surfaceContainer: const Color(0xFF12181F),
+        surfaceContainerHigh: const Color(0xFF1A222C),
+        surfaceContainerHighest: const Color(0xFF24303F),
+      );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Theme Engine & Registry
@@ -92,6 +137,7 @@ class AppTheme {
   static final Map<String, BifrostTheme> _themes = {
     'main': MidnightGreenTheme(),
     'teal': ClassicTealTheme(),
+    'tactical': TacticalHudTheme(),
   };
 
   /// Returns a list of all registered themes.

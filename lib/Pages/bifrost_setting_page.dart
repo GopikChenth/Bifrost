@@ -661,6 +661,10 @@ class _SettingsPageState extends State<SettingsPage>
                                       value: 'main',
                                       child: Text('Midnight Green'),
                                     ),
+                                    DropdownMenuItem<String>(
+                                      value: 'tactical',
+                                      child: Text('Tactical HUD'),
+                                    ),
                                   ],
                                   onChanged: (String? value) {
                                     if (value != null) {

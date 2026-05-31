@@ -11,6 +11,7 @@ class GoogleDriveSyncService {
   static final GoogleDriveSyncService instance = GoogleDriveSyncService._internal();
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: '653767607012-u2rcpp3mjclicjfnkb5h5jt9l1palksn.apps.googleusercontent.com',
     scopes: <String>[
       drive.DriveApi.driveFileScope,
       drive.DriveApi.driveReadonlyScope,
