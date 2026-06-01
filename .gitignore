@@ -79,8 +79,5 @@ app.*.map.json
 #Testing
 /mock_servers/
 
-# Documentation and images
-readme images/
-
 # Progress tracking
 /progress.md
