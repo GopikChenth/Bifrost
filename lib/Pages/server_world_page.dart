@@ -12,6 +12,9 @@ import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bifrost/Services/google_drive_sync_service.dart';
+import 'package:bifrost/Services/discord_webhook_service.dart';
 
 class WorldPage extends StatefulWidget {
   const WorldPage({
@@ -29,16 +32,24 @@ class WorldPage extends StatefulWidget {
 
 class _WorldPageState extends State<WorldPage> {
   static const FileManagerService _fileManagerService = FileManagerService();
+  final TextEditingController _discordWebhookController = TextEditingController();
+  final TextEditingController _discordCreatorController = TextEditingController();
 
   bool _isBusy = false;
   String? _message;
   String? _worldPath;
+  bool _discordEnabled = false;
+  bool _discordNotifyOnStart = true;
+  bool _discordNotifyOnStop = true;
+  bool _discordNotifyOnSync = true;
+  bool _isDiscordTesting = false;
 
   @override
   void initState() {
     super.initState();
     widget.serverManager.addListener(_refresh);
     _loadWorldPath();
+    _loadDiscordSettings();
   }
 
   void _refresh() {
@@ -63,12 +74,106 @@ class _WorldPageState extends State<WorldPage> {
 
   @override
   void dispose() {
+    _discordWebhookController.dispose();
+    _discordCreatorController.dispose();
     widget.serverManager.removeListener(_refresh);
     super.dispose();
   }
 
   void _goHome() {
     Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
+  }
+
+  Future<void> _loadDiscordSettings() async {
+    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+    if (server == null) return;
+
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String path = server.path;
+      final String discordWebhookUrl = prefs.getString('discord_webhook_url_$path') ?? '';
+      
+      final String defaultCreator = GoogleDriveSyncService.instance.currentUser?.displayName ?? 'Host';
+      final String discordCreatorName = prefs.getString('discord_creator_name_$path') ?? defaultCreator;
+      
+      final bool discordEnabled = prefs.getBool('discord_enabled_$path') ?? false;
+      final bool notifyStart = prefs.getBool('discord_notify_on_start_$path') ?? true;
+      final bool notifyStop = prefs.getBool('discord_notify_on_stop_$path') ?? true;
+      final bool notifySync = prefs.getBool('discord_notify_on_sync_$path') ?? true;
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _discordWebhookController.text = discordWebhookUrl;
+        _discordCreatorController.text = discordCreatorName;
+        _discordEnabled = discordEnabled;
+        _discordNotifyOnStart = notifyStart;
+        _discordNotifyOnStop = notifyStop;
+        _discordNotifyOnSync = notifySync;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveDiscordSettings() async {
+    final BifrostServer? server = widget.serverManager.serverByPath(widget.serverPath);
+    if (server == null) return;
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String path = server.path;
+
+    await prefs.setString('discord_webhook_url_$path', _discordWebhookController.text.trim());
+    await prefs.setString('discord_creator_name_$path', _discordCreatorController.text.trim());
+    await prefs.setBool('discord_enabled_$path', _discordEnabled);
+    await prefs.setBool('discord_notify_on_start_$path', _discordNotifyOnStart);
+    await prefs.setBool('discord_notify_on_stop_$path', _discordNotifyOnStop);
+    await prefs.setBool('discord_notify_on_sync_$path', _discordNotifyOnSync);
+  }
+
+  Future<void> _sendTestDiscordMessage(BifrostServer server) async {
+    final String url = _discordWebhookController.text.trim();
+    if (url.isEmpty || !url.startsWith('http')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid Discord Webhook URL first.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isDiscordTesting = true;
+    });
+
+    try {
+      final String creator = _discordCreatorController.text.trim().isNotEmpty
+          ? _discordCreatorController.text.trim()
+          : 'Host';
+      
+      final Color color = Theme.of(context).colorScheme.primary;
+      final int embedColor = color.toARGB32() & 0xFFFFFF;
+
+      await const DiscordWebhookService().sendTestNotification(
+        webhookUrl: url,
+        creatorName: creator,
+        themeColor: embedColor,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test message sent successfully to Discord!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send test message: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDiscordTesting = false;
+        });
+      }
+    }
   }
 
   Future<void> _runAction(Future<String?> Function() action) async {
@@ -161,6 +266,8 @@ class _WorldPageState extends State<WorldPage> {
         body: const Center(child: Text('Server no longer exists.')),
       );
     }
+
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
       endDrawer: ServerNavigationDrawer(
@@ -303,6 +410,172 @@ class _WorldPageState extends State<WorldPage> {
                 onTap: () => _runAction(() => widget.serverManager.regenerateWorld(server)),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.notifications_active_rounded,
+                          color: theme.colorScheme.primary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Discord Integration',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Enable Discord Webhook'),
+                    subtitle: const Text('Send status notifications to a Discord channel.'),
+                    value: _discordEnabled,
+                    onChanged: (bool value) {
+                      setState(() {
+                        _discordEnabled = value;
+                      });
+                      _saveDiscordSettings();
+                    },
+                  ),
+                  if (_discordEnabled) ...[
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: TextField(
+                        controller: _discordWebhookController,
+                        keyboardType: TextInputType.url,
+                        decoration: InputDecoration(
+                          labelText: 'Webhook URL',
+                          helperText: 'Paste the Discord channel Webhook URL here.',
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              _saveDiscordSettings();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Saved Discord Webhook URL.')),
+                              );
+                            },
+                            icon: const Icon(Icons.save_rounded),
+                            tooltip: 'Save Webhook URL',
+                          ),
+                        ),
+                        onSubmitted: (_) {
+                          _saveDiscordSettings();
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: TextField(
+                        controller: _discordCreatorController,
+                        keyboardType: TextInputType.name,
+                        decoration: InputDecoration(
+                          labelText: 'Server Host / Creator Name',
+                          helperText: 'Attributed as creator in Discord notifications.',
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              _saveDiscordSettings();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Saved Creator Name.')),
+                              );
+                            },
+                            icon: const Icon(Icons.save_rounded),
+                            tooltip: 'Save Creator Name',
+                          ),
+                        ),
+                        onSubmitted: (_) {
+                          _saveDiscordSettings();
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Notification Triggers',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notify on Server Start'),
+                      subtitle: const Text('Sends a message when the server goes Live.'),
+                      value: _discordNotifyOnStart,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _discordNotifyOnStart = value;
+                        });
+                        _saveDiscordSettings();
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notify on Server Stop'),
+                      subtitle: const Text('Sends a message when the server is stopped.'),
+                      value: _discordNotifyOnStop,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _discordNotifyOnStop = value;
+                        });
+                        _saveDiscordSettings();
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notify on World Sync'),
+                      subtitle: const Text('Sends a message when Google Drive syncs backups.'),
+                      value: _discordNotifyOnSync,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _discordNotifyOnSync = value;
+                        });
+                        _saveDiscordSettings();
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _isDiscordTesting
+                            ? null
+                            : () => _sendTestDiscordMessage(server),
+                        icon: _isDiscordTesting
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.onPrimary,
+                                ),
+                              )
+                            : const Icon(Icons.send_rounded),
+                        label: const Text('Send Test Message'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),

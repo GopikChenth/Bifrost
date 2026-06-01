@@ -12,9 +12,12 @@ import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Services/local_runtime_service.dart';
 import 'package:bifrost/Utils/local_runtime_models.dart';
 import 'package:bifrost/Utils/zip_utility.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bifrost/Services/discord_webhook_service.dart';
+import 'package:bifrost/Components/theme.dart';
+import 'package:bifrost/Utils/settings_repository.dart';
 
 
 class ServerManagerService extends ChangeNotifier {
@@ -1069,6 +1072,8 @@ class ServerManagerService extends ChangeNotifier {
       return;
     }
 
+    final String oldStatus = _servers[index].status;
+
     _servers[index] = _servers[index].copyWith(
       status: status,
       consoleLabel: consoleLabel,
@@ -1079,6 +1084,10 @@ class ServerManagerService extends ChangeNotifier {
       _updateNativeNotification(_servers[index]);
     }
     notifyListeners();
+
+    if (status != null && status != oldStatus) {
+      _handleDiscordStatusTransition(_servers[index], oldStatus, status);
+    }
   }
 
   Future<String?> syncWorldToGoogleDrive(BifrostServer server) async {
@@ -1138,7 +1147,9 @@ class ServerManagerService extends ChangeNotifier {
         }
       }
 
-      return 'Successfully backed up world to Google Drive! File ID: $fileId';
+      final String successMsg = 'Successfully backed up world to Google Drive! File ID: $fileId';
+      _triggerSyncNotification(server, successMsg);
+      return successMsg;
     } catch (e) {
       if (server.isOnline) {
         await sendServerCommand(server: server, command: 'save-on');
@@ -1146,7 +1157,9 @@ class ServerManagerService extends ChangeNotifier {
       final msg = e.toString().startsWith('Exception: ')
           ? e.toString().substring('Exception: '.length)
           : e.toString();
-      return 'Failed to sync to Google Drive: $msg';
+      final String errorMsg = 'Failed to sync to Google Drive: $msg';
+      _triggerSyncNotification(server, errorMsg);
+      return errorMsg;
     } finally {
       if (zipFile != null && zipFile.existsSync()) {
         try {
@@ -1216,9 +1229,13 @@ class ServerManagerService extends ChangeNotifier {
         await prefs.setString('gdrive_owner_email_${server.path}', ownerEmail);
       }
 
-      return 'Successfully downloaded and synced world from Google Drive!';
+      final String successMsg = 'Successfully downloaded and synced world from Google Drive!';
+      _triggerSyncNotification(server, successMsg);
+      return successMsg;
     } catch (e) {
-      return 'Failed to download and sync: ${e.toString()}';
+      final String errorMsg = 'Failed to download and sync: ${e.toString()}';
+      _triggerSyncNotification(server, errorMsg);
+      return errorMsg;
     } finally {
       if (zipFile != null && zipFile.existsSync()) {
         try {
@@ -1293,6 +1310,132 @@ class ServerManagerService extends ChangeNotifier {
     downloadedBytes = 0;
     totalDownloadBytes = null;
     lastErrorMessage = null;
+  }
+
+  Future<String?> _resolveServerAddress() async {
+    try {
+      final List<NetworkInterface> interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      final List<String> candidates = <String>[
+        for (final NetworkInterface networkInterface in interfaces)
+          for (final InternetAddress address in networkInterface.addresses)
+            if (_isUsableLanAddress(address.address)) address.address,
+      ];
+
+      if (candidates.isEmpty) {
+        return null;
+      }
+
+      final String ip = candidates.firstWhere(
+        (String address) => address.startsWith('192.168.'),
+        orElse: () => candidates.first,
+      );
+      return '$ip:25565';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isUsableLanAddress(String address) {
+    return !address.startsWith('127.') &&
+        !address.startsWith('169.254.') &&
+        !address.startsWith('0.');
+  }
+
+  Future<void> _handleDiscordStatusTransition(
+    BifrostServer server,
+    String oldStatus,
+    String newStatus,
+  ) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String path = server.path;
+      final bool enabled = prefs.getBool('discord_enabled_$path') ?? false;
+      if (!enabled) {
+        return;
+      }
+
+      final String webhookUrl = prefs.getString('discord_webhook_url_$path') ?? '';
+      if (webhookUrl.trim().isEmpty) {
+        return;
+      }
+
+      final String creatorName = prefs.getString('discord_creator_name_$path') ?? 'Host';
+
+      final Color themeColor = AppTheme.getThemeColor(AppSettings.themeNotifier.value);
+      final int embedColor = themeColor.toARGB32() & 0xFFFFFF;
+
+      if (newStatus == 'Running') {
+        final bool notifyStart = prefs.getBool('discord_notify_on_start_$path') ?? true;
+        if (notifyStart) {
+          final String? address = await _resolveServerAddress();
+          await const DiscordWebhookService().sendServerStartedNotification(
+            webhookUrl: webhookUrl,
+            serverName: server.name,
+            creatorName: creatorName,
+            version: server.version,
+            type: server.type,
+            address: address,
+            themeColor: embedColor,
+          );
+        }
+      } else if (newStatus == 'Stopped' || newStatus == 'Offline') {
+        if (oldStatus == 'Running' || oldStatus == 'Stopping') {
+          final bool notifyStop = prefs.getBool('discord_notify_on_stop_$path') ?? true;
+          if (notifyStop) {
+            await const DiscordWebhookService().sendServerStoppedNotification(
+              webhookUrl: webhookUrl,
+              serverName: server.name,
+              creatorName: creatorName,
+              themeColor: embedColor,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to send Discord lifecycle notification: $e');
+    }
+  }
+
+  Future<void> _triggerSyncNotification(
+    BifrostServer server,
+    String statusMessage,
+  ) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String path = server.path;
+      final bool enabled = prefs.getBool('discord_enabled_$path') ?? false;
+      if (!enabled) {
+        return;
+      }
+
+      final bool notifySync = prefs.getBool('discord_notify_on_sync_$path') ?? true;
+      if (!notifySync) {
+        return;
+      }
+
+      final String webhookUrl = prefs.getString('discord_webhook_url_$path') ?? '';
+      if (webhookUrl.trim().isEmpty) {
+        return;
+      }
+
+      final String creatorName = prefs.getString('discord_creator_name_$path') ?? 'Host';
+
+      final Color themeColor = AppTheme.getThemeColor(AppSettings.themeNotifier.value);
+      final int embedColor = themeColor.toARGB32() & 0xFFFFFF;
+
+      await const DiscordWebhookService().sendWorldSyncedNotification(
+        webhookUrl: webhookUrl,
+        serverName: server.name,
+        creatorName: creatorName,
+        statusMessage: statusMessage,
+        themeColor: embedColor,
+      );
+    } catch (e) {
+      debugPrint('Failed to send Discord sync notification: $e');
+    }
   }
 
   @override

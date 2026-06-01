@@ -139,3 +139,9 @@ Battery optimization also matters. Some Android phones are aggressive about stop
 - Keep backups before replacing or regenerating a world.
 - Playit.gg is separate from Bifrost. Bifrost runs the server; Playit provides the public tunnel address.
 - There will a warning when you try to login in with google account. Don't worry about the warning click advanced and continue with login process.
+
+## Used For Reffrence
+
+Amethyst (AngelAuraMC):https://github.com/AngelAuraMC/Amethyst-Android
+PojavLauncher:https://github.com/PojavLauncherTeam/PojavLauncher
+FoldCraftLauncher:https://github.com/FCL-Team/FoldCraftLauncher

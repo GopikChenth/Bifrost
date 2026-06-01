@@ -7,6 +7,8 @@ import 'package:bifrost/Services/server_storage_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -193,6 +195,60 @@ class _SettingsPageState extends State<SettingsPage>
         _statusMessage = error.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  Future<void> _launchKofiUrl() async {
+    final Uri url = Uri.parse('https://ko-fi.com/arcadelabs');
+    try {
+      bool launched = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        launched = await launchUrl(
+          url,
+          mode: LaunchMode.platformDefault,
+        );
+      }
+      if (!launched) {
+        _copyKofiFallback();
+      }
+    } catch (e) {
+      debugPrint('Error launching URL (externalApplication): $e');
+      try {
+        final bool launchedDefault = await launchUrl(
+          url,
+          mode: LaunchMode.platformDefault,
+        );
+        if (!launchedDefault) {
+          _copyKofiFallback();
+        }
+      } catch (err) {
+        debugPrint('Error launching URL (platformDefault): $err');
+        _copyKofiFallback();
+      }
+    }
+  }
+
+  void _copyKofiFallback() {
+    Clipboard.setData(const ClipboardData(text: 'https://ko-fi.com/arcadelabs'));
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Colors.greenAccent),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text('Could not open browser. Link copied: ko-fi.com/arcadelabs'),
+            ),
+          ],
+        ),
+        duration: Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _setDefaultDirectory(bool value) {
@@ -697,6 +753,31 @@ class _SettingsPageState extends State<SettingsPage>
                                 ),
                               ),
                             ],
+                          ),
+                          const Divider(height: 24, thickness: 0.5),
+                          Text(
+                            'Support Project',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            leading: Icon(
+                              Icons.coffee_rounded,
+                              color: colors.primary,
+                            ),
+                            title: const Text('Buy me a coffee', style: TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: const Text(
+                              'Support Bifrost development on Ko-fi',
+                            ),
+                            trailing: const Icon(
+                              Icons.open_in_new_rounded,
+                              size: 18,
+                            ),
+                            onTap: _launchKofiUrl,
                           ),
                         ],
                       ),
