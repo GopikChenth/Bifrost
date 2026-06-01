@@ -2,14 +2,13 @@
 
 Bifrost is a Minecraft Java server manager for Android.
 
-It lets you create a server, run it from your phone, manage the world, and share it with friends without you to rent server using money or wait for long waiting period. Its a simple idea: your phone becomes yout own host, Bifrost handles the Minecraft server files, and Playit.gg helps you to play with your friends.
+It lets you create a server, run it from your phone, manage the world, and share it with friends without you to rent server using money or wait for long waiting period. Its a simple idea: your phone becomes yout own server, Bifrost handles the Minecraft server files, and Playit.gg helps you to play with your friends.
 
 If you just want to start a world with friends and keep control of the files yourself, this app is built for that.
 
-
 ## How It Works
 
-When you create a server Bifrost will download the need files and create server folder on your phone. 
+When you create a server Bifrost will download the need files and create server folder on your phone.
 
 When you press Start, Bifrost prepares the correct bundled Java runtime for your Minecraft version. Then it launches the server on the phone and watches its state. You can see whether the server is starting, running, stopping, stopped, or in an error state.
 
@@ -24,7 +23,7 @@ Playit.gg allow you to play with your friends. Your phone keeps running the Mine
 You only need to set it up once for a server.
 
 In monkey terms,
-    Server sends packet to playit -> Playit send packet to friend -> Now Friend send packet to playit -> Playit send packet to server (cycle continues)
+Server sends packet to playit -> Playit send packet to friend -> Now Friend send packet to playit -> Playit send packet to server -> All Happy
 
 ## Setting Up Playit.gg
 
@@ -80,13 +79,24 @@ On the tunnel creation page:
 
 To find your phone's local IP address, open your phone's Wi-Fi settings, tap your connected Wi-Fi network, and look for the IPv4 address.
 
+---
+
 ![Playit setup step 5](readme_images/5.jpg)
+
+---
 
 ![Playit setup step 6](readme_images/6.png)
 
+---
+
 ![Playit setup step 7](readme_images/7.jpg)
 
-![Playit setup step 11](readme_images/11.jpg)
+---
+
+<p align="center">
+  <img src="readme_images/11.jpg" alt="Playit setup step 11" width="40%">
+</p>
+___
 
 ### 7. Copy the Tunnel Address
 
@@ -128,5 +138,3 @@ Battery optimization also matters. Some Android phones are aggressive about stop
 - Keep backups before replacing or regenerating a world.
 - Playit.gg is separate from Bifrost. Bifrost runs the server; Playit provides the public tunnel address.
 - There will a warning when you try to login in with google account. Don't worry about the warning click advanced and continue with login process.
-
-
