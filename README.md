@@ -50,21 +50,21 @@ If this is your first time using Playit.gg, create a new account. If you already
 
 After login, Playit should redirect you to a Claim Agent page. Press Continue.
 
-![Playit setup step 1](readme%20images/1.jpg)
+![Playit setup step 1](readme_images/1.jpg)
 
 Then create or add the agent when Playit asks.
 
-![Playit setup step 2](readme%20images/2.jpg)
+![Playit setup step 2](readme_images/2.jpg)
 
 ### 5. Finish Agent Setup
 
 The agent setup process will start. Wait for it to finish.
 
-![Playit setup step 3](readme%20images/3.png)
+![Playit setup step 3](readme_images/3.png)
 
 Once it is completed, click Create Tunnel.
 
-![Playit setup step 4](readme%20images/4.png)
+![Playit setup step 4](readme_images/4.png)
 
 ### 6. Create the Minecraft Tunnel
 
@@ -80,13 +80,13 @@ On the tunnel creation page:
 
 To find your phone's local IP address, open your phone's Wi-Fi settings, tap your connected Wi-Fi network, and look for the IPv4 address.
 
-![Playit setup step 5](readme%20images/5.jpg)
+![Playit setup step 5](readme_images/5.jpg)
 
-![Playit setup step 6](readme%20images/6.png)
+![Playit setup step 6](readme_images/6.png)
 
-![Playit setup step 7](readme%20images/7.jpg)
+![Playit setup step 7](readme_images/7.jpg)
 
-![Playit setup step 11](readme%20images/11.jpg)
+![Playit setup step 11](readme_images/11.jpg)
 
 ### 7. Copy the Tunnel Address
 
@@ -94,9 +94,9 @@ After the tunnel is created, open the tunnel dashboard. You will see the tunnel 
 
 Copy that address and share it with the people who want to join your world.
 
-![Playit setup step 8](readme%20images/8.png)
+![Playit setup step 8](readme_images/8.png)
 
-![Playit setup step 10](readme%20images/10.png)
+![Playit setup step 10](readme_images/10.png)
 
 Your friends should paste that Playit address into Minecraft Java Edition's multiplayer server list. They do not need to be on your Wi-Fi.
 
