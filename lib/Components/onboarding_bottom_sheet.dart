@@ -164,8 +164,10 @@ class _OnboardingBottomSheetState extends State<OnboardingBottomSheet>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Welcome to Bifrost',
+                        'Welcome to Bifröst',
                         style: theme.textTheme.headlineSmall?.copyWith(
+                          fontFamily: 'OldNorth',
+                          fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
