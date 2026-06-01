@@ -94,7 +94,7 @@ To find your phone's local IP address, open your phone's Wi-Fi settings, tap you
 ---
 
 <p align="center">
-  <img src="readme_images/11.jpg" alt="Playit setup step 11" width="40%">
+  <img src="readme_images/mobile.jpg" alt="Playit setup step 11" width="40%">
 </p>
 
 ---
