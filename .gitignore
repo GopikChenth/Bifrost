@@ -75,3 +75,12 @@ app.*.map.json
 /jr-21.zip
 /FILE_USAGE.md
 /.vscode/
+
+#Testing
+/mock_servers/
+
+# Documentation and images
+readme images/
+
+# Progress tracking
+/progress.md
