@@ -308,23 +308,37 @@ class _SettingsPageState extends State<SettingsPage>
           : ListView(
               padding: const EdgeInsets.all(16),
               children: <Widget>[
+                // ---- SECTION 1: System & Permissions ----
                 _stagger(
                   0,
                   Card(
-                    elevation: 1,
-                    shadowColor: Colors.transparent,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
                         color: colors.outlineVariant.withValues(alpha: 0.5),
                       ),
                     ),
+                    color: colors.surfaceContainerLow,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          // ---- Storage Access ----
+                          Row(
+                            children: [
+                              Icon(Icons.system_security_update_warning_rounded, color: colors.primary, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'System & Permissions',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
                           Row(
                             children: <Widget>[
                               Icon(
@@ -370,8 +384,6 @@ class _SettingsPageState extends State<SettingsPage>
                             ],
                           ),
                           const Divider(height: 24, thickness: 0.5),
-
-                          // ---- Battery Optimization ----
                           Row(
                             children: <Widget>[
                               Icon(
@@ -499,9 +511,44 @@ class _SettingsPageState extends State<SettingsPage>
                               ),
                             ),
                           ],
-                          const Divider(height: 24, thickness: 0.5),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                          // ---- Server Directory ----
+                // ---- SECTION 2: Storage & Backups ----
+                _stagger(
+                  1,
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    color: colors.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: [
+                              Icon(Icons.folder_shared_rounded, color: colors.primary, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Storage & Backups',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
                           Text(
                             'Server Storage',
                             style: theme.textTheme.titleSmall?.copyWith(
@@ -614,10 +661,75 @@ class _SettingsPageState extends State<SettingsPage>
                                 : const SizedBox.shrink(),
                           ),
                           const Divider(height: 24, thickness: 0.5),
-
-                          // ---- Preferences ----
                           Text(
-                            'Preferences',
+                            'Shared Worlds',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('Manage Shared Worlds'),
+                            subtitle: const Text(
+                              'Download co-op worlds shared by your friends',
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (BuildContext context) => GoogleDriveSyncPage(
+                                    serverPath: null,
+                                    serverManager: ServerManagerService(),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ---- SECTION 3: Application Preferences ----
+                _stagger(
+                  2,
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    color: colors.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: [
+                              Icon(Icons.tune_rounded, color: colors.primary, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Application Preferences',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'UI Behavior',
                             style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -654,36 +766,6 @@ class _SettingsPageState extends State<SettingsPage>
                                 builder: (BuildContext context) =>
                                     const OnboardingBottomSheet(),
                               ).then((_) => _refreshPermissionStatus());
-                            },
-                          ),
-                          const Divider(height: 24, thickness: 0.5),
-                          Text(
-                            'Shared Worlds',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            title: const Text('Manage Shared Worlds'),
-                            subtitle: const Text(
-                              'Download co-op worlds shared by your friends',
-                            ),
-                            trailing: const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 20,
-                            ),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (BuildContext context) => GoogleDriveSyncPage(
-                                    serverPath: null,
-                                    serverManager: ServerManagerService(),
-                                  ),
-                                ),
-                              );
                             },
                           ),
                           const Divider(height: 24, thickness: 0.5),
@@ -754,14 +836,44 @@ class _SettingsPageState extends State<SettingsPage>
                               ),
                             ],
                           ),
-                          const Divider(height: 24, thickness: 0.5),
-                          Text(
-                            'Support Project',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ---- SECTION 4: Support & Project ----
+                _stagger(
+                  3,
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: colors.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    color: colors.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: [
+                              Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Support Project',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 12),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
