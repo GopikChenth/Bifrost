@@ -925,37 +925,306 @@ class ServerStorageService {
   }
 
   Future<List<String>> readPlayedPlayers(String serverPath) async {
-    final File userCacheFile = File(path.join(serverPath, 'usercache.json'));
-    if (!await userCacheFile.exists()) {
-      return <String>[];
-    }
+    final Set<String> players = <String>{};
+    final Set<String> cachedUuids = <String>{};
+    final String userCachePath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>['usercache.json'],
+    );
+    final File userCacheFile = File(userCachePath);
     try {
-      final String content = await userCacheFile.readAsString();
-      if (content.trim().isEmpty) return <String>[];
-      final Object? decoded = jsonDecode(content);
-      if (decoded is! List<dynamic>) return <String>[];
-
-      final List<String> players = <String>[];
-      for (final Object? item in decoded) {
-        if (item is Map<String, dynamic>) {
-          final String? name = item['name'] as String?;
-          if (name != null && name.trim().isNotEmpty) {
-            players.add(name.trim());
+      if (await userCacheFile.exists()) {
+        final String content = await userCacheFile.readAsString();
+        if (content.trim().isNotEmpty) {
+          final Object? decoded = jsonDecode(content);
+          if (decoded is List<dynamic>) {
+            for (final Object? item in decoded) {
+              if (item is Map<String, dynamic>) {
+                final String? name = item['name'] as String?;
+                final String? uuid = item['uuid'] as String?;
+                if (name != null && name.trim().isNotEmpty) {
+                  players.add(name.trim());
+                }
+                if (uuid != null && uuid.trim().isNotEmpty) {
+                  cachedUuids.add(uuid.replaceAll('-', '').toLowerCase());
+                }
+              }
+            }
           }
         }
       }
-      return players;
     } catch (_) {
-      return <String>[];
+      // Fall through to playerdata discovery.
+    }
+
+    final String levelName = await _resolveLevelName(serverPath);
+    final String playerdataPath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>[levelName, 'playerdata'],
+    );
+    final Directory playerdataDir = Directory(playerdataPath);
+    if (await playerdataDir.exists()) {
+      try {
+        await for (final FileSystemEntity entity in playerdataDir.list()) {
+          if (entity is File && entity.path.toLowerCase().endsWith('.dat')) {
+            final String uuid = path.basenameWithoutExtension(entity.path);
+            final String normalizedUuid = uuid.replaceAll('-', '').toLowerCase();
+            if (uuid.trim().isNotEmpty && !cachedUuids.contains(normalizedUuid)) {
+              players.add(uuid.trim());
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return players.toList()
+      ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  Future<String> _resolvePathCaseInsensitively(
+    String basePath,
+    List<String> segments,
+  ) async {
+    var currentPath = basePath;
+    for (final String segment in segments) {
+      final Directory dir = Directory(currentPath);
+      if (!await dir.exists()) {
+        currentPath = path.join(currentPath, segment);
+        continue;
+      }
+
+      var found = false;
+      try {
+        await for (final FileSystemEntity entity in dir.list()) {
+          final String name = path.basename(entity.path);
+          if (name.toLowerCase() == segment.toLowerCase()) {
+            currentPath = entity.path;
+            found = true;
+            break;
+          }
+        }
+      } catch (_) {}
+
+      if (!found) {
+        currentPath = path.join(currentPath, segment);
+      }
+    }
+    return currentPath;
+  }
+
+  Future<String> _resolveLevelName(String serverPath) async {
+    final String propertiesPath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>['server.properties'],
+    );
+    final File propertiesFile = File(propertiesPath);
+    if (await propertiesFile.exists()) {
+      try {
+        final List<String> lines = await propertiesFile.readAsLines();
+        for (final String line in lines) {
+          final String trimmed = line.trim();
+          if (trimmed.startsWith('level-name=')) {
+            final String value = trimmed.split('=').sublist(1).join('=').trim();
+            if (value.isNotEmpty) {
+              return value;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return 'world';
+  }
+
+  Uint8List _decodeNbtBytes(Uint8List bytes) {
+    try {
+      return Uint8List.fromList(gzip.decode(bytes));
+    } catch (_) {
+      try {
+        return Uint8List.fromList(zlib.decode(bytes));
+      } catch (_) {
+        return bytes;
+      }
     }
   }
+
+  Future<File?> _resolvePlayerDataFile({
+    required String serverPath,
+    required String levelName,
+    required String? uuid,
+  }) async {
+    final String playerdataPath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>[levelName, 'playerdata'],
+    );
+    final Directory playerdataDir = Directory(playerdataPath);
+    if (!await playerdataDir.exists()) {
+      return null;
+    }
+
+    final List<File> datFiles = (await playerdataDir.list().toList())
+        .whereType<File>()
+        .where((File file) => file.path.toLowerCase().endsWith('.dat'))
+        .toList();
+    if (datFiles.isEmpty) {
+      return null;
+    }
+
+    final String normalizedUuid =
+        uuid?.replaceAll('-', '').toLowerCase().trim() ?? '';
+    if (normalizedUuid.isNotEmpty) {
+      for (final File file in datFiles) {
+        final String normalizedFileUuid = path
+            .basenameWithoutExtension(file.path)
+            .replaceAll('-', '')
+            .toLowerCase();
+        if (normalizedFileUuid == normalizedUuid) {
+          return file;
+        }
+      }
+    }
+
+    if (datFiles.length == 1) {
+      return datFiles.first;
+    }
+
+    datFiles.sort(
+      (File a, File b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+    );
+    return datFiles.first;
+  }
+
+  Map<String, dynamic>? _readInventoryItem(dynamic item) {
+    if (item is! Map) {
+      return null;
+    }
+
+    final String id = _normalizeMinecraftItemId(item['id']);
+    if (id.isEmpty || id == 'minecraft:air' || id == 'air') {
+      return null;
+    }
+
+    return <String, dynamic>{
+      'id': id,
+      'Count': ((item['Count'] ?? item['count']) as num?)?.toInt() ?? 1,
+      'Slot': (item['Slot'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  String _normalizeMinecraftItemId(Object? rawId) {
+    if (rawId is String) {
+      return rawId;
+    }
+    if (rawId is num) {
+      final int legacyId = rawId.toInt();
+      return _legacyItemIds[legacyId] ?? 'legacy_$legacyId';
+    }
+    return '';
+  }
+
+  static const Map<int, String> _legacyItemIds = <int, String>{
+    1: 'minecraft:stone',
+    2: 'minecraft:grass_block',
+    3: 'minecraft:dirt',
+    4: 'minecraft:cobblestone',
+    5: 'minecraft:oak_planks',
+    17: 'minecraft:oak_log',
+    20: 'minecraft:glass',
+    35: 'minecraft:white_wool',
+    50: 'minecraft:torch',
+    54: 'minecraft:chest',
+    58: 'minecraft:crafting_table',
+    61: 'minecraft:furnace',
+    260: 'minecraft:apple',
+    261: 'minecraft:bow',
+    262: 'minecraft:arrow',
+    263: 'minecraft:coal',
+    264: 'minecraft:diamond',
+    265: 'minecraft:iron_ingot',
+    266: 'minecraft:gold_ingot',
+    267: 'minecraft:iron_sword',
+    268: 'minecraft:wooden_sword',
+    269: 'minecraft:wooden_shovel',
+    270: 'minecraft:wooden_pickaxe',
+    271: 'minecraft:wooden_axe',
+    272: 'minecraft:stone_sword',
+    273: 'minecraft:stone_shovel',
+    274: 'minecraft:stone_pickaxe',
+    275: 'minecraft:stone_axe',
+    276: 'minecraft:diamond_sword',
+    277: 'minecraft:diamond_shovel',
+    278: 'minecraft:diamond_pickaxe',
+    279: 'minecraft:diamond_axe',
+    280: 'minecraft:stick',
+    287: 'minecraft:string',
+    288: 'minecraft:feather',
+    289: 'minecraft:gunpowder',
+    295: 'minecraft:wheat_seeds',
+    296: 'minecraft:wheat',
+    297: 'minecraft:bread',
+    298: 'minecraft:leather_helmet',
+    299: 'minecraft:leather_chestplate',
+    300: 'minecraft:leather_leggings',
+    301: 'minecraft:leather_boots',
+    302: 'minecraft:chainmail_helmet',
+    303: 'minecraft:chainmail_chestplate',
+    304: 'minecraft:chainmail_leggings',
+    305: 'minecraft:chainmail_boots',
+    306: 'minecraft:iron_helmet',
+    307: 'minecraft:iron_chestplate',
+    308: 'minecraft:iron_leggings',
+    309: 'minecraft:iron_boots',
+    310: 'minecraft:diamond_helmet',
+    311: 'minecraft:diamond_chestplate',
+    312: 'minecraft:diamond_leggings',
+    313: 'minecraft:diamond_boots',
+    314: 'minecraft:golden_helmet',
+    315: 'minecraft:golden_chestplate',
+    316: 'minecraft:golden_leggings',
+    317: 'minecraft:golden_boots',
+    320: 'minecraft:cooked_porkchop',
+    322: 'minecraft:golden_apple',
+    345: 'minecraft:compass',
+    347: 'minecraft:clock',
+    348: 'minecraft:glowstone_dust',
+    349: 'minecraft:cod',
+    350: 'minecraft:cooked_cod',
+    352: 'minecraft:bone',
+    353: 'minecraft:sugar',
+    354: 'minecraft:cake',
+    357: 'minecraft:cookie',
+    360: 'minecraft:melon_slice',
+    364: 'minecraft:cooked_beef',
+    365: 'minecraft:chicken',
+    366: 'minecraft:cooked_chicken',
+    367: 'minecraft:rotten_flesh',
+    368: 'minecraft:ender_pearl',
+    369: 'minecraft:blaze_rod',
+    370: 'minecraft:ghast_tear',
+    371: 'minecraft:gold_nugget',
+    372: 'minecraft:nether_wart',
+    373: 'minecraft:potion',
+    381: 'minecraft:ender_eye',
+    388: 'minecraft:emerald',
+    391: 'minecraft:carrot',
+    392: 'minecraft:potato',
+    393: 'minecraft:baked_potato',
+    397: 'minecraft:skeleton_skull',
+  };
 
   Future<Map<String, dynamic>> readPlayerDataAndStats(
     String serverPath,
     String playerName,
   ) async {
-    final File userCacheFile = File(path.join(serverPath, 'usercache.json'));
-    String? uuid;
+    final String lookupName = playerName.trim();
+    final bool lookupIsUuid = RegExp(
+      r'^[0-9a-fA-F-]{32,36}$',
+    ).hasMatch(lookupName);
+    final String userCachePath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>['usercache.json'],
+    );
+    final File userCacheFile = File(userCachePath);
+    String? uuid = lookupIsUuid ? lookupName : null;
     if (await userCacheFile.exists()) {
       try {
         final String content = await userCacheFile.readAsString();
@@ -965,7 +1234,10 @@ class ServerStorageService {
             for (final Object? item in decoded) {
               if (item is Map<String, dynamic>) {
                 final String? name = item['name'] as String?;
-                if (name?.toLowerCase() == playerName.toLowerCase()) {
+                final String? cachedUuid = item['uuid'] as String?;
+                if (name?.toLowerCase() == lookupName.toLowerCase() ||
+                    cachedUuid?.replaceAll('-', '').toLowerCase() ==
+                        lookupName.replaceAll('-', '').toLowerCase()) {
                   uuid = item['uuid'] as String?;
                   break;
                 }
@@ -976,23 +1248,75 @@ class ServerStorageService {
       } catch (_) {}
     }
 
-    final File propertiesFile = File(path.join(serverPath, 'server.properties'));
-    String levelName = 'world';
-    if (await propertiesFile.exists()) {
-      try {
-        final List<String> lines = await propertiesFile.readAsLines();
-        for (final String line in lines) {
-          final String trimmed = line.trim();
-          if (trimmed.startsWith('level-name=')) {
-            final String val = trimmed.split('=').sublist(1).join('=').trim();
-            if (val.isNotEmpty) {
-              levelName = val;
+    // Fallback 1: Check whitelist.json, ops.json, banned-players.json if uuid is not found
+    if (uuid == null || uuid.isEmpty) {
+      final List<String> filesToCheck = <String>[
+        'whitelist.json',
+        'ops.json',
+        'banned-players.json'
+      ];
+      for (final String fileName in filesToCheck) {
+        final String filePath = await _resolvePathCaseInsensitively(
+          serverPath,
+          <String>[fileName],
+        );
+        final File file = File(filePath);
+        if (await file.exists()) {
+          try {
+            final String content = await file.readAsString();
+            if (content.trim().isNotEmpty) {
+              final Object? decoded = jsonDecode(content);
+              if (decoded is List<dynamic>) {
+                for (final Object? item in decoded) {
+                  if (item is Map<String, dynamic>) {
+                    final String? name = item['name'] as String?;
+                    final String? cachedUuid = item['uuid'] as String?;
+                    if (name?.toLowerCase() == lookupName.toLowerCase() ||
+                        cachedUuid?.replaceAll('-', '').toLowerCase() ==
+                            lookupName.replaceAll('-', '').toLowerCase()) {
+                      uuid = item['uuid'] as String?;
+                      if (uuid != null && uuid.isNotEmpty) {
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
             }
-            break;
+          } catch (_) {}
+        }
+        if (uuid != null && uuid.isNotEmpty) {
+          break;
+        }
+      }
+    }
+
+    // Fallback 2: Fetch from Mojang API (useful if they are an online player but haven't joined yet / cache is empty)
+    if (!lookupIsUuid && (uuid == null || uuid.isEmpty)) {
+      try {
+        final HttpClient client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 4);
+        final Uri uri = Uri.parse(
+          'https://api.mojang.com/users/profiles/minecraft/$lookupName',
+        );
+        final HttpClientRequest request = await client.getUrl(uri);
+        final HttpClientResponse response = await request.close();
+        if (response.statusCode == 200) {
+          final String body = await response.transform(utf8.decoder).join();
+          final Map<String, dynamic> data =
+              jsonDecode(body) as Map<String, dynamic>;
+          final String? rawId = data['id'] as String?;
+          if (rawId != null && rawId.length == 32) {
+            uuid = '${rawId.substring(0, 8)}-${rawId.substring(8, 12)}-'
+                '${rawId.substring(12, 16)}-${rawId.substring(16, 20)}-'
+                '${rawId.substring(20)}';
           }
         }
+        client.close();
       } catch (_) {}
     }
+
+    final String levelName = await _resolveLevelName(serverPath);
 
     final Map<String, dynamic> resultStats = <String, dynamic>{
       'playtime': '0m',
@@ -1006,12 +1330,23 @@ class ServerStorageService {
 
     final List<Map<String, dynamic>> inventoryItems = <Map<String, dynamic>>[];
     final List<Map<String, dynamic>> enderItems = <Map<String, dynamic>>[];
+    final File? datFile = await _resolvePlayerDataFile(
+      serverPath: serverPath,
+      levelName: levelName,
+      uuid: uuid,
+    );
 
-    if (uuid != null) {
+    if (datFile != null) {
+      uuid = path.basenameWithoutExtension(datFile.path);
+    }
+
+    if (uuid != null && uuid.isNotEmpty) {
       // 1. Read Stats
-      final File statsFile = File(
-        path.join(serverPath, levelName, 'stats', '$uuid.json'),
+      final String statsPath = await _resolvePathCaseInsensitively(
+        serverPath,
+        <String>[levelName, 'stats', '$uuid.json'],
       );
+      final File statsFile = File(statsPath);
       if (await statsFile.exists()) {
         try {
           final String content = await statsFile.readAsString();
@@ -1047,14 +1382,10 @@ class ServerStorageService {
       }
 
       // 2. Read Player Dat
-      final File datFile = File(
-        path.join(serverPath, levelName, 'playerdata', '$uuid.dat'),
-      );
-      if (await datFile.exists()) {
+      if (datFile != null && await datFile.exists()) {
         try {
           final Uint8List compressedBytes = await datFile.readAsBytes();
-          final List<int> decompressed = gzip.decode(compressedBytes);
-          final Uint8List decompressedBytes = Uint8List.fromList(decompressed);
+          final Uint8List decompressedBytes = _decodeNbtBytes(compressedBytes);
           final Map<String, dynamic> nbt =
               NbtReader(decompressedBytes).parseRoot();
 
@@ -1080,12 +1411,10 @@ class ServerStorageService {
           final dynamic inv = nbt['Inventory'];
           if (inv is List<dynamic>) {
             for (final dynamic item in inv) {
-              if (item is Map<String, dynamic>) {
-                inventoryItems.add(<String, dynamic>{
-                  'id': item['id'] as String? ?? '',
-                  'Count': (item['Count'] as num?)?.toInt() ?? 1,
-                  'Slot': (item['Slot'] as num?)?.toInt() ?? 0,
-                });
+              final Map<String, dynamic>? inventoryItem =
+                  _readInventoryItem(item);
+              if (inventoryItem != null) {
+                inventoryItems.add(inventoryItem);
               }
             }
           }
@@ -1093,16 +1422,16 @@ class ServerStorageService {
           final dynamic ender = nbt['EnderItems'];
           if (ender is List<dynamic>) {
             for (final dynamic item in ender) {
-              if (item is Map<String, dynamic>) {
-                enderItems.add(<String, dynamic>{
-                  'id': item['id'] as String? ?? '',
-                  'Count': (item['Count'] as num?)?.toInt() ?? 1,
-                  'Slot': (item['Slot'] as num?)?.toInt() ?? 0,
-                });
+              final Map<String, dynamic>? enderItem = _readInventoryItem(item);
+              if (enderItem != null) {
+                enderItems.add(enderItem);
               }
             }
           }
-        } catch (_) {}
+        } catch (e, stack) {
+          // ignore: avoid_print
+          print('Error reading player NBT data: $e\n$stack');
+        }
       }
     }
 
@@ -1111,6 +1440,7 @@ class ServerStorageService {
       'stats': resultStats,
       'inventory': inventoryItems,
       'enderChest': enderItems,
+      'playerDataPath': datFile?.path,
     };
   }
 }
@@ -1122,7 +1452,7 @@ class NbtReader {
   int _offset = 0;
 
   int readByte() {
-    final int val = _data.getUint8(_offset);
+    final int val = _data.getInt8(_offset);
     _offset += 1;
     return val;
   }

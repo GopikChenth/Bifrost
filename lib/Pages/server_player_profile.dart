@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
@@ -76,6 +79,9 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     if (context.mounted && message != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
+    if (mounted) {
+      _loadPlayerData();
+    }
   }
 
   _InventoryItem? _getInventoryItem(int slotIndex) {
@@ -93,8 +99,8 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
   _InventoryItem? _getItemFromList(List<dynamic>? list, int slotIndex) {
     if (list == null) return null;
     for (final dynamic item in list) {
-      if (item is Map<String, dynamic> && item['Slot'] == slotIndex) {
-        final String fullId = item['id'] as String? ?? '';
+      if (item is Map && item['Slot'] == slotIndex) {
+        final String fullId = item['id']?.toString() ?? '';
         if (fullId.isEmpty || fullId == 'minecraft:air') return null;
         final String cleanId = fullId.replaceFirst('minecraft:', '');
         
@@ -234,10 +240,25 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     final int playerKillsVal = (stats?['playerKills'] as num?)?.toInt() ?? 0;
     final int mobKillsVal = (stats?['mobKills'] as num?)?.toInt() ?? 0;
     final String? playerUuid = _playerData?['uuid'] as String?;
+    final int inventoryCount =
+        (_playerData?['inventory'] as List<dynamic>?)?.length ?? 0;
+    final int enderChestCount =
+        (_playerData?['enderChest'] as List<dynamic>?)?.length ?? 0;
+    final String? playerDataPath = _playerData?['playerDataPath'] as String?;
+    final String? inventorySource = _playerData?['inventorySource'] as String?;
+    final bool liveInventoryChecked =
+        _playerData?['liveInventoryChecked'] as bool? ?? false;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Player Profile'),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _isLoadingData ? null : _loadPlayerData,
+            tooltip: 'Refresh profile & inventory',
+          ),
+        ],
       ),
       body: ListView(
               padding: const EdgeInsets.all(12),
@@ -272,6 +293,20 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        if (inventoryCount == 0 && enderChestCount == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              playerDataPath == null
+                                  ? 'No saved playerdata .dat file was found for this player yet.'
+                                  : inventorySource == 'live' || liveInventoryChecked
+                                      ? 'Live inventory command returned no items.'
+                                      : 'Saved playerdata was found, but its inventory list is empty.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                         
                         // Upper Equipment / Avatar section (Minecraft Layout)
                         IntrinsicHeight(
@@ -708,47 +743,11 @@ class _InventorySlot extends StatelessWidget {
               : Stack(
                   alignment: Alignment.center,
                   children: <Widget>[
-                    Image.network(
-                      'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/$serverVersion/items/${item!.cleanId}.png',
-                      width: 28,
-                      height: 28,
-                      fit: BoxFit.contain,
-                      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                        return Image.network(
-                          'https://assets.mcasset.cloud/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
-                          width: 28,
-                          height: 28,
-                          fit: BoxFit.contain,
-                          errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                            return Image.network(
-                              'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/$serverVersion/assets/minecraft/textures/item/${item!.cleanId}.png',
-                              width: 28,
-                              height: 28,
-                              fit: BoxFit.contain,
-                              errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                                return Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: item!.color.withValues(alpha: 0.7),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      item!.name.isNotEmpty ? item!.name[0] : '?',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
+                    CachedItemImage(
+                      cleanId: item!.cleanId,
+                      serverVersion: serverVersion,
+                      fallbackColor: item!.color,
+                      fallbackName: item!.name,
                     ),
                     if (item!.qty > 1)
                       Positioned(
@@ -903,6 +902,234 @@ class _StatTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class CachedItemImage extends StatefulWidget {
+  const CachedItemImage({
+    super.key,
+    required this.cleanId,
+    required this.serverVersion,
+    required this.fallbackColor,
+    required this.fallbackName,
+  });
+
+  final String cleanId;
+  final String serverVersion;
+  final Color fallbackColor;
+  final String fallbackName;
+
+  @override
+  State<CachedItemImage> createState() => _CachedItemImageState();
+}
+
+class _CachedItemImageState extends State<CachedItemImage> {
+  File? _localFile;
+  bool _isLoading = true;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLocalFile();
+  }
+
+  @override
+  void didUpdateWidget(CachedItemImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cleanId != widget.cleanId ||
+        oldWidget.serverVersion != widget.serverVersion) {
+      _initLocalFile();
+    }
+  }
+
+  Future<void> _initLocalFile() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _localFile = null;
+    });
+
+    try {
+      final Directory supportDir = await getApplicationSupportDirectory();
+      final String cachePath = path.join(
+        supportDir.path,
+        'item_textures',
+        widget.serverVersion,
+        '${widget.cleanId}.png',
+      );
+      final File file = File(cachePath);
+
+      if (await file.exists()) {
+        if (mounted) {
+          setState(() {
+            _localFile = file;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      // If not exists locally, attempt to download
+      final bool downloaded = await _downloadTexture(file);
+      if (downloaded && await file.exists()) {
+        if (mounted) {
+          setState(() {
+            _localFile = file;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _getClosestPrismarineVersion(String serverVersion) {
+    final List<String> supported = <String>[
+      '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5', '1.21.4', '1.21.1',
+      '1.20.2', '1.19.1', '1.18.1', '1.17.1', '1.16.4', '1.16.1', '1.15.2', '1.14.4', '1.13.2', '1.13',
+      '1.12', '1.11.2', '1.10', '1.9', '1.8.8'
+    ];
+
+    if (supported.contains(serverVersion)) {
+      return serverVersion;
+    }
+
+    final List<int> parts = serverVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    if (parts.isEmpty) return '1.20.2';
+
+    final int major = parts[0];
+    final int minor = parts.length > 1 ? parts[1] : 0;
+    final int patch = parts.length > 2 ? parts[2] : 0;
+
+    final List<String> sameMinor = supported.where((v) {
+      final List<int> p = v.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      return p.length >= 2 && p[0] == major && p[1] == minor;
+    }).toList();
+
+    if (sameMinor.isNotEmpty) {
+      sameMinor.sort((a, b) {
+        final List<int> pA = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+        final List<int> pB = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+        final int patchA = pA.length > 2 ? pA[2] : 0;
+        final int patchB = pB.length > 2 ? pB[2] : 0;
+        return (patchA - patch).abs().compareTo((patchB - patch).abs());
+      });
+      return sameMinor.first;
+    }
+
+    final List<String> sortedByMinor = List<String>.from(supported);
+    sortedByMinor.sort((a, b) {
+      final List<int> pA = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final List<int> pB = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final int minorA = pA.length > 1 ? pA[1] : 0;
+      final int minorB = pB.length > 1 ? pB[1] : 0;
+      return (minorA - minor).abs().compareTo((minorB - minor).abs());
+    });
+
+    return sortedByMinor.first;
+  }
+
+  Future<bool> _downloadTexture(File destinationFile) async {
+    // 1. Primary: assets.mcasset.cloud
+    final String primaryUrl =
+        'https://assets.mcasset.cloud/${widget.serverVersion}/assets/minecraft/textures/item/${widget.cleanId}.png';
+    // 2. Secondary: PrismarineJS/minecraft-assets (uses closest matching available version folder)
+    final String prismarineVersion = _getClosestPrismarineVersion(widget.serverVersion);
+    final String secondaryUrl =
+        'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/$prismarineVersion/items/${widget.cleanId}.png';
+
+    final List<String> urls = <String>[primaryUrl, secondaryUrl];
+
+    final HttpClient client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 5);
+
+    for (final String url in urls) {
+      try {
+        final Uri uri = Uri.parse(url);
+        final HttpClientRequest request = await client.getUrl(uri);
+        final HttpClientResponse response = await request.close();
+
+        if (response.statusCode == 200) {
+          await destinationFile.parent.create(recursive: true);
+          final List<int> bytes = await response.expand((List<int> chunk) => chunk).toList();
+          await destinationFile.writeAsBytes(bytes);
+          client.close();
+          return true;
+        }
+      } catch (_) {
+        // Fallback to next URL
+      }
+    }
+
+    client.close();
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          _fallbackWidget(),
+          const Positioned(
+            right: 0,
+            bottom: 0,
+            child: SizedBox(
+              width: 8,
+              height: 8,
+              child: CircularProgressIndicator(strokeWidth: 1.4),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_hasError || _localFile == null) {
+      return _fallbackWidget();
+    }
+
+    return Image.file(
+      _localFile!,
+      width: 28,
+      height: 28,
+      fit: BoxFit.contain,
+    );
+  }
+
+  Widget _fallbackWidget() {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: widget.fallbackColor.withValues(alpha: 0.7),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Text(
+          widget.fallbackName.isNotEmpty ? widget.fallbackName[0] : '?',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }

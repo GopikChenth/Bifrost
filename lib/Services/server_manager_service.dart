@@ -148,6 +148,37 @@ class ServerManagerService extends ChangeNotifier {
     return players;
   }
 
+  Future<List<String>> _loadPersistedKnownPlayersFor(String serverPath) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> players =
+        prefs.getStringList('known_players_$serverPath') ?? const <String>[];
+    return players
+        .where((String player) => player.trim().isNotEmpty)
+        .map((String player) => player.trim())
+        .toSet()
+        .toList()
+      ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  Future<void> _saveKnownPlayersFor(String serverPath) async {
+    final Set<String> players = _knownPlayersByServerPath[serverPath] ?? <String>{};
+    if (players.isEmpty) {
+      return;
+    }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> existingPlayers =
+        prefs.getStringList('known_players_$serverPath') ?? const <String>[];
+    final Set<String> merged = <String>{
+      ...existingPlayers,
+      ...players,
+    };
+    await prefs.setStringList(
+      'known_players_$serverPath',
+      merged.where((String player) => player.trim().isNotEmpty).toList()
+        ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase())),
+    );
+  }
+
   List<String> onlinePlayersFor(String serverPath) {
     final List<String> players =
         (_onlinePlayersByServerPath[serverPath] ?? <String>{}).toList();
@@ -590,16 +621,18 @@ class ServerManagerService extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchConsoleDeltasFor(String serverPath) async {
+  Future<String> fetchConsoleDeltasFor(String serverPath) async {
     if (_consoleFetchInFlightByServerPath[serverPath] == true) {
-      return;
+      return '';
     }
     _consoleFetchInFlightByServerPath[serverPath] = true;
+    String newOutput = '';
     try {
       final int lastOffset = _consoleOffsetsByServerPath[serverPath] ?? 0;
       final LocalConsoleOutput result = await _localRuntimeService.getServerConsoleOutput(lastOffset);
       
       final String output = result.output;
+      newOutput = output;
       final int totalWritten = result.totalWritten;
       final bool reset = result.reset;
 
@@ -622,6 +655,7 @@ class ServerManagerService extends ChangeNotifier {
     } finally {
       _consoleFetchInFlightByServerPath[serverPath] = false;
     }
+    return newOutput;
   }
 
   Future<String?> sendServerCommand({
@@ -732,17 +766,186 @@ class ServerManagerService extends ChangeNotifier {
   }
 
   Future<List<String>> readPlayedPlayers(BifrostServer server) async {
-    return _serverStorageService.readPlayedPlayers(server.path);
+    final Set<String> players = <String>{
+      ...await _serverStorageService.readPlayedPlayers(server.path),
+      ...await _loadPersistedKnownPlayersFor(server.path),
+    };
+    return players.toList()
+      ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 
   Future<Map<String, dynamic>> readPlayerDataAndStats(
     BifrostServer server,
     String playerName,
   ) async {
-    return _serverStorageService.readPlayerDataAndStats(
+    Map<String, dynamic>? liveData;
+    if (server.isOnline && !_looksLikeUuid(playerName)) {
+      try {
+        liveData = await _readLivePlayerInventory(server, playerName);
+      } catch (e) {
+        debugPrint('Failed to read live player inventory: $e');
+      }
+      try {
+        await sendServerCommand(server: server, command: 'save-all flush');
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+      } catch (e) {
+        debugPrint('Failed to save-all before loading player data: $e');
+      }
+    }
+    final Map<String, dynamic> storedData = await _serverStorageService.readPlayerDataAndStats(
       server.path,
       playerName,
     );
+    if (liveData == null) {
+      return storedData;
+    }
+
+    final List<Map<String, dynamic>> liveInventory =
+        liveData['inventory'] as List<Map<String, dynamic>>;
+    final List<Map<String, dynamic>> liveEnderChest =
+        liveData['enderChest'] as List<Map<String, dynamic>>;
+    if (liveInventory.isEmpty && liveEnderChest.isEmpty) {
+      return <String, dynamic>{
+        ...storedData,
+        'liveInventoryChecked': true,
+      };
+    }
+
+    return <String, dynamic>{
+      ...storedData,
+      if (liveInventory.isNotEmpty) 'inventory': liveInventory,
+      if (liveEnderChest.isNotEmpty) 'enderChest': liveEnderChest,
+      'inventorySource': 'live',
+    };
+  }
+
+  bool _looksLikeUuid(String value) {
+    return RegExp(r'^[0-9a-fA-F-]{32,36}$').hasMatch(value.trim());
+  }
+
+  Future<Map<String, dynamic>> _readLivePlayerInventory(
+    BifrostServer server,
+    String playerName,
+  ) async {
+    await fetchConsoleDeltasFor(server.path);
+
+    final int inventoryStart =
+        (_consoleOutputByServerPath[server.path] ?? '').length;
+    await sendServerCommand(
+      server: server,
+      command: 'data get entity $playerName Inventory',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    String inventoryOutput = await fetchConsoleDeltasFor(server.path);
+    if (inventoryOutput.trim().isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      inventoryOutput = await fetchConsoleDeltasFor(server.path);
+    }
+    final String inventoryBuffer = _consoleOutputByServerPath[server.path] ?? '';
+    if (inventoryBuffer.length > inventoryStart) {
+      inventoryOutput = inventoryBuffer.substring(inventoryStart);
+    }
+
+    final int enderStart =
+        (_consoleOutputByServerPath[server.path] ?? '').length;
+    await sendServerCommand(
+      server: server,
+      command: 'data get entity $playerName EnderItems',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    String enderOutput = await fetchConsoleDeltasFor(server.path);
+    if (enderOutput.trim().isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      enderOutput = await fetchConsoleDeltasFor(server.path);
+    }
+    final String enderBuffer = _consoleOutputByServerPath[server.path] ?? '';
+    if (enderBuffer.length > enderStart) {
+      enderOutput = enderBuffer.substring(enderStart);
+    }
+
+    return <String, dynamic>{
+      'inventory': _parseLiveInventoryItems(inventoryOutput),
+      'enderChest': _parseLiveInventoryItems(enderOutput),
+    };
+  }
+
+  List<Map<String, dynamic>> _parseLiveInventoryItems(String output) {
+    final List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
+    final RegExp idPattern = RegExp(r'id:\s*"([^"]+)"|id:\s*([\w:.-]+)');
+    final RegExp slotPattern = RegExp(r'Slot:\s*(-?\d+)[bBsSlL]?');
+    final RegExp countPattern = RegExp(r'(?:Count|count):\s*(\d+)[bBsSlL]?');
+
+    for (final String compound in _extractNbtCompounds(output)) {
+      final RegExpMatch? idMatch = idPattern.firstMatch(compound);
+      final RegExpMatch? slotMatch = slotPattern.firstMatch(compound);
+      if (idMatch == null || slotMatch == null) {
+        continue;
+      }
+
+      final String id = idMatch.group(1) ?? idMatch.group(2) ?? '';
+      if (id.isEmpty || id == 'minecraft:air') {
+        continue;
+      }
+
+      final int? slot = int.tryParse(slotMatch.group(1) ?? '');
+      if (slot == null) {
+        continue;
+      }
+
+      final RegExpMatch? countMatch = countPattern.firstMatch(compound);
+      final int count = int.tryParse(countMatch?.group(1) ?? '') ?? 1;
+      items.add(<String, dynamic>{
+        'id': id,
+        'Slot': slot,
+        'Count': count,
+      });
+    }
+
+    return items;
+  }
+
+  List<String> _extractNbtCompounds(String output) {
+    final List<String> compounds = <String>[];
+    int depth = 0;
+    int start = -1;
+    bool inString = false;
+    bool escaped = false;
+
+    for (int index = 0; index < output.length; index += 1) {
+      final String char = output[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char == '\\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char == '{') {
+        if (depth == 0) {
+          start = index;
+        }
+        depth += 1;
+      } else if (char == '}') {
+        if (depth > 0) {
+          depth -= 1;
+          if (depth == 0 && start >= 0) {
+            compounds.add(output.substring(start, index + 1));
+            start = -1;
+          }
+        }
+      }
+    }
+
+    return compounds;
   }
 
 
@@ -1054,6 +1257,7 @@ class ServerManagerService extends ChangeNotifier {
 
     if (players.length != previousPlayers.length ||
         !players.containsAll(previousPlayers)) {
+      unawaited(_saveKnownPlayersFor(serverPath));
       notifyListeners();
     }
   }
