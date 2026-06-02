@@ -431,7 +431,7 @@ class _SettingsPageState extends State<SettingsPage>
                                 ),
                             ],
                           ),
-                          if (_isAggressiveOem) ...[
+                          if (_isAggressiveOem && !_isBatteryOptimizationIgnored) ...[
                             const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.all(12),
