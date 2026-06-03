@@ -1,5 +1,11 @@
 # Bifrost
 
+![Android](https://img.shields.io/badge/Android-5.0%2B-green?logo=android&logoColor=white&style=flat-square)
+![License](https://img.shields.io/badge/License-GPL--3.0-orange?style=flat-square)
+![GitHub Release](https://img.shields.io/github/v/release/GopikChenth/Bifrost?style=flat-square&color=blue)
+![GitHub Stars](https://img.shields.io/github/stars/GopikChenth/Bifrost?style=flat-square&color=yellow)
+![Downloads](https://img.shields.io/github/downloads/GopikChenth/Bifrost/total?style=flat-square&color=blueviolet)
+
 Bifrost is a Minecraft Java server manager for Android.
 
 It lets you create a server, run it from your phone, manage the world, and share it with friends without you to rent server using money or wait for long waiting period. Its a simple idea: your phone becomes yout own server, Bifrost handles the Minecraft server files, and Playit.gg helps you to play with your friends.
