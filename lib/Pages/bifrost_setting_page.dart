@@ -891,6 +891,31 @@ class _SettingsPageState extends State<SettingsPage>
                             ),
                             onTap: _launchKofiUrl,
                           ),
+                          const Divider(height: 24, thickness: 0.5),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            leading: Icon(
+                              Icons.description_rounded,
+                              color: colors.primary,
+                            ),
+                            title: const Text('Licenses', style: TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: const Text(
+                              'View licenses for Bifrost and its dependencies',
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                            ),
+                            onTap: () {
+                              showLicensePage(
+                                context: context,
+                                applicationName: 'Bifrost',
+                                applicationVersion: '1.0.0',
+                                applicationLegalese: '© 2026 Arcade Labs',
+                              );
+                            },
+                          ),
                         ],
                       ),
                     ),

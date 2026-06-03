@@ -145,3 +145,8 @@ Battery optimization also matters. Some Android phones are aggressive about stop
 Amethyst (AngelAuraMC):https://github.com/AngelAuraMC/Amethyst-Android
 PojavLauncher:https://github.com/PojavLauncherTeam/PojavLauncher
 FoldCraftLauncher:https://github.com/FCL-Team/FoldCraftLauncher
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
