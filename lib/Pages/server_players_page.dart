@@ -1,12 +1,13 @@
 import 'package:bifrost/Components/server_navigation_drawer.dart';
 import 'package:bifrost/Components/player_profile_card.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
+import 'package:bifrost/Models/player_record.dart';
 import 'package:bifrost/Pages/server_settings_page.dart';
 import 'package:bifrost/Pages/server_page.dart';
 import 'package:bifrost/Pages/server_terminal_page.dart';
 import 'package:bifrost/Pages/server_world_page.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
-import 'package:bifrost/Pages/server_player_profile.dart';
+// import 'package:bifrost/Pages/server_player_profile.dart';
 import 'package:flutter/material.dart';
 
 class ServerPlayersPage extends StatefulWidget {
@@ -26,7 +27,7 @@ class ServerPlayersPage extends StatefulWidget {
 class _ServerPlayersPageState extends State<ServerPlayersPage> {
   bool _isLoading = true;
   Map<String, List<String>> _lists = const <String, List<String>>{};
-  List<String> _usercachePlayers = const <String>[];
+  List<PlayerRecord> _playerRecords = const <PlayerRecord>[];
   String? _message;
 
   @override
@@ -57,14 +58,14 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
     try {
       final Map<String, List<String>> lists = await widget.serverManager
           .readPlayerAccessLists(server);
-      final List<String> playedPlayers = await widget.serverManager
-          .readPlayedPlayers(server);
+      final List<PlayerRecord> playerRecords = await widget.serverManager
+          .readPlayerRecords(server);
       if (!mounted) {
         return;
       }
       setState(() {
         _lists = lists;
-        _usercachePlayers = playedPlayers;
+        _playerRecords = playerRecords;
         _isLoading = false;
         _message = null;
       });
@@ -85,21 +86,33 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
     super.dispose();
   }
 
-  List<String> _knownPlayersFrom(Map<String, List<String>> lists) {
-    final Set<String> knownPlayers = <String>{};
+  List<PlayerRecord> _knownPlayersFrom(Map<String, List<String>> lists) {
+    final Map<String, PlayerRecord> players = <String, PlayerRecord>{};
+    void addRecord(PlayerRecord record) {
+      if (!record.hasName && !record.hasUuid) {
+        return;
+      }
+      final String key = record.normalizedKey;
+      final PlayerRecord? existing = players[key];
+      players[key] = existing == null ? record : existing.merge(record);
+    }
+
     for (final String key in <String>['whitelist', 'ops', 'bannedPlayers']) {
       for (final String value in lists[key] ?? const <String>[]) {
         if (value.trim().isNotEmpty) {
-          knownPlayers.add(value.trim());
+          addRecord(PlayerRecord(name: value.trim(), source: key));
         }
       }
     }
-    knownPlayers.addAll(_usercachePlayers);
-    knownPlayers.addAll(
-      widget.serverManager.knownPlayersFor(widget.serverPath),
-    );
-    return knownPlayers.toList()..sort(
-      (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()),
+    for (final PlayerRecord record in _playerRecords) {
+      addRecord(record);
+    }
+    for (final String player in widget.serverManager.knownPlayersFor(widget.serverPath)) {
+      addRecord(PlayerRecord(name: player, source: 'console'));
+    }
+    return players.values.toList()..sort(
+      (PlayerRecord a, PlayerRecord b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
     );
   }
 
@@ -239,12 +252,15 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
                 ),
                 _PlayerProfilesSection(
                   players: _knownPlayersFrom(_lists),
-                  onOpenPlayer: (String player) async {
+                  onOpenPlayer: (PlayerRecord player) async {
+                    // Player Profile Page is disabled.
+                    // Keep code commented out:
+                    /*
                     await Navigator.of(context).push(
                       MaterialPageRoute<PlayerProfilePage>(
                         builder: (BuildContext context) {
                           return PlayerProfilePage(
-                            playerName: player,
+                            playerRecord: player,
                             serverPath: server.path,
                             serverManager: widget.serverManager,
                           );
@@ -252,6 +268,7 @@ class _ServerPlayersPageState extends State<ServerPlayersPage> {
                       ),
                     );
                     await _loadLists();
+                    */
                   },
                 ),
               ],
@@ -463,8 +480,8 @@ class _PlayerProfilesSection extends StatelessWidget {
     required this.onOpenPlayer,
   });
 
-  final List<String> players;
-  final ValueChanged<String> onOpenPlayer;
+  final List<PlayerRecord> players;
+  final ValueChanged<PlayerRecord> onOpenPlayer;
 
   @override
   Widget build(BuildContext context) {
@@ -475,7 +492,7 @@ class _PlayerProfilesSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Player profiles',
+            'Players',
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w900,
             ),
@@ -484,14 +501,17 @@ class _PlayerProfilesSection extends StatelessWidget {
           if (players.isEmpty)
             const _Panel(
               child: Text(
-                'No player profiles found yet. Add a player in Whitelist, OP, or Blacklist to create a profile shortcut.',
+                'No players found yet. Add a player in Whitelist, OP, or Blacklist to create a shortcut.',
               ),
             )
           else
-            for (final String player in players)
+            for (final PlayerRecord player in players)
               PlayerProfileCard(
-                playerName: player,
-                subtitle: 'Tap to view inventory, stats, and controls',
+                playerName: player.displayName,
+                uuid: player.uuid,
+                subtitle: player.hasUuid
+                    ? 'Registered player'
+                    : 'Name only: join once to link saved offline data',
                 onTap: () => onOpenPlayer(player),
               ),
         ],

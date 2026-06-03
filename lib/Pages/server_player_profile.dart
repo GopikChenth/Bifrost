@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
+import 'package:bifrost/Models/player_record.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Components/player_profile_card.dart';
 import 'package:bifrost/Components/bifrost_bounce.dart';
@@ -11,12 +12,12 @@ import 'package:bifrost/Components/bifrost_bounce.dart';
 class PlayerProfilePage extends StatefulWidget {
   const PlayerProfilePage({
     super.key,
-    required this.playerName,
+    required this.playerRecord,
     required this.serverPath,
     required this.serverManager,
   });
 
-  final String playerName;
+  final PlayerRecord playerRecord;
   final String serverPath;
   final ServerManagerService serverManager;
 
@@ -32,7 +33,7 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
   @override
   void initState() {
     super.initState();
-    _activePlayerName = widget.playerName;
+    _activePlayerName = widget.playerRecord.displayName;
     _loadPlayerData();
   }
 
@@ -48,8 +49,11 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
       return;
     }
     try {
+      final String lookupKey = server.isOnline && widget.playerRecord.hasName
+          ? widget.playerRecord.displayName
+          : widget.playerRecord.lookupKey;
       final Map<String, dynamic> data = await widget.serverManager
-          .readPlayerDataAndStats(server, _activePlayerName);
+          .readPlayerDataAndStats(server, lookupKey);
       setState(() {
         _playerData = data;
         _isLoadingData = false;
@@ -239,15 +243,15 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
     final int deathVal = (stats?['deaths'] as num?)?.toInt() ?? 0;
     final int playerKillsVal = (stats?['playerKills'] as num?)?.toInt() ?? 0;
     final int mobKillsVal = (stats?['mobKills'] as num?)?.toInt() ?? 0;
-    final String? playerUuid = _playerData?['uuid'] as String?;
+    final String? playerUuid =
+        _playerData?['uuid'] as String? ?? widget.playerRecord.uuid;
     final int inventoryCount =
         (_playerData?['inventory'] as List<dynamic>?)?.length ?? 0;
     final int enderChestCount =
         (_playerData?['enderChest'] as List<dynamic>?)?.length ?? 0;
     final String? playerDataPath = _playerData?['playerDataPath'] as String?;
+    final String? statsPath = _playerData?['statsPath'] as String?;
     final String? inventorySource = _playerData?['inventorySource'] as String?;
-    final bool liveInventoryChecked =
-        _playerData?['liveInventoryChecked'] as bool? ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -299,9 +303,9 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                             child: Text(
                               playerDataPath == null
                                   ? 'No saved playerdata .dat file was found for this player yet.'
-                                  : inventorySource == 'live' || liveInventoryChecked
-                                      ? 'Live inventory command returned no items.'
-                                      : 'Saved playerdata was found, but its inventory list is empty.',
+                                  : inventorySource == 'live'
+                                      ? 'Live inventory is empty.'
+                                      : 'Saved playerdata was found, but the inventory is empty.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: colors.onSurfaceVariant,
                               ),
@@ -593,6 +597,54 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                           ),
                         ),
                         const SizedBox(height: 12),
+                        if (statsPath == null && playerDataPath == null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Text(
+                              'No saved data files were found for this player yet.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.favorite_rounded,
+                                label: 'Health',
+                                value: '${healthVal.round()} / 20 HP',
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.military_tech_rounded,
+                                label: 'XP Level',
+                                value: xpVal.toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.explore_rounded,
+                                label: 'Coordinates',
+                                value: coordVal,
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.restaurant_rounded,
+                                label: 'Food Level',
+                                value: '${(stats?['foodLevel'] as num?)?.toInt() ?? 20} / 20',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           children: <Widget>[
                             Expanded(
@@ -616,42 +668,11 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                           children: <Widget>[
                             Expanded(
                               child: _StatTile(
-                                icon: Icons.military_tech_rounded,
-                                label: 'XP Level',
-                                value: xpVal.toString(),
-                              ),
-                            ),
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.explore_rounded,
-                                label: 'Coordinates',
-                                value: coordVal,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _StatTile(
-                                icon: Icons.favorite_rounded,
-                                label: 'Health',
-                                value: '${healthVal.round()} / 20 HP',
-                              ),
-                            ),
-                            Expanded(
-                              child: _StatTile(
                                 icon: Icons.person_off_rounded,
                                 label: 'Player Kills',
                                 value: playerKillsVal.toString(),
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: <Widget>[
                             Expanded(
                               child: _StatTile(
                                 icon: Icons.pets_rounded,
@@ -659,7 +680,25 @@ class _PlayerProfilePageState extends State<PlayerProfilePage> {
                                 value: mobKillsVal.toString(),
                               ),
                             ),
-                            const Spacer(),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.sports_esports_rounded,
+                                label: 'Game Mode',
+                                value: stats?['gameMode'] as String? ?? 'Survival',
+                              ),
+                            ),
+                            Expanded(
+                              child: _StatTile(
+                                icon: Icons.public_rounded,
+                                label: 'Dimension',
+                                value: stats?['dimension'] as String? ?? 'overworld',
+                              ),
+                            ),
                           ],
                         ),
                       ],

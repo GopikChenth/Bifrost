@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:bifrost/Components/add_server_window.dart';
+import 'package:bifrost/Models/player_record.dart';
 import 'package:bifrost/Services/storage_access_service.dart';
 import 'package:bifrost/Utils/settings_repository.dart';
 import 'package:path/path.dart' as path;
@@ -981,6 +983,105 @@ class ServerStorageService {
       ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 
+  Future<List<PlayerRecord>> readPlayerRecords(String serverPath) async {
+    final Map<String, PlayerRecord> records = <String, PlayerRecord>{};
+
+    void addRecord(PlayerRecord record) {
+      if (!record.hasName && !record.hasUuid) {
+        return;
+      }
+      final String key = record.normalizedKey;
+      final PlayerRecord? existing = records[key];
+      records[key] = existing == null ? record : existing.merge(record);
+    }
+
+    final String userCachePath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>['usercache.json'],
+    );
+    final File userCacheFile = File(userCachePath);
+    if (await userCacheFile.exists()) {
+      try {
+        final String content = await userCacheFile.readAsString();
+        if (content.trim().isNotEmpty) {
+          final Object? decoded = jsonDecode(content);
+          if (decoded is List<dynamic>) {
+            for (final Object? item in decoded) {
+              if (item is Map<String, dynamic>) {
+                addRecord(PlayerRecord(
+                  name: item['name'] as String?,
+                  uuid: item['uuid'] as String?,
+                  source: 'usercache',
+                ));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    for (final String fileName in <String>[
+      'whitelist.json',
+      'ops.json',
+      'banned-players.json',
+    ]) {
+      final String filePath = await _resolvePathCaseInsensitively(
+        serverPath,
+        <String>[fileName],
+      );
+      final File file = File(filePath);
+      if (!await file.exists()) {
+        continue;
+      }
+      try {
+        final String content = await file.readAsString();
+        if (content.trim().isEmpty) {
+          continue;
+        }
+        final Object? decoded = jsonDecode(content);
+        if (decoded is List<dynamic>) {
+          for (final Object? item in decoded) {
+            if (item is Map<String, dynamic>) {
+              addRecord(PlayerRecord(
+                name: item['name'] as String?,
+                uuid: item['uuid'] as String?,
+                source: fileName,
+              ));
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    final String levelName = await _resolveLevelName(serverPath);
+    for (final String folderName in <String>['playerdata', 'stats']) {
+      final String folderPath = await _resolvePathCaseInsensitively(
+        serverPath,
+        <String>[levelName, folderName],
+      );
+      final Directory folder = Directory(folderPath);
+      if (!await folder.exists()) {
+        continue;
+      }
+      try {
+        await for (final FileSystemEntity entity in folder.list()) {
+          if (entity is File &&
+              (entity.path.toLowerCase().endsWith('.dat') ||
+                  entity.path.toLowerCase().endsWith('.json'))) {
+            final String uuid = path.basenameWithoutExtension(entity.path);
+            addRecord(PlayerRecord(uuid: uuid, source: folderName));
+          }
+        }
+      } catch (_) {}
+    }
+
+    return records.values.toList()
+      ..sort(
+        (PlayerRecord a, PlayerRecord b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+      );
+  }
+
   Future<String> _resolvePathCaseInsensitively(
     String basePath,
     List<String> segments,
@@ -1093,6 +1194,52 @@ class ServerStorageService {
     return datFiles.first;
   }
 
+  Future<File?> _resolveStatsFile({
+    required String serverPath,
+    required String levelName,
+    required String? uuid,
+  }) async {
+    final String statsPath = await _resolvePathCaseInsensitively(
+      serverPath,
+      <String>[levelName, 'stats'],
+    );
+    final Directory statsDir = Directory(statsPath);
+    if (!await statsDir.exists()) {
+      return null;
+    }
+
+    final List<File> statsFiles = (await statsDir.list().toList())
+        .whereType<File>()
+        .where((File file) => file.path.toLowerCase().endsWith('.json'))
+        .toList();
+    if (statsFiles.isEmpty) {
+      return null;
+    }
+
+    final String normalizedUuid =
+        uuid?.replaceAll('-', '').toLowerCase().trim() ?? '';
+    if (normalizedUuid.isNotEmpty) {
+      for (final File file in statsFiles) {
+        final String normalizedFileUuid = path
+            .basenameWithoutExtension(file.path)
+            .replaceAll('-', '')
+            .toLowerCase();
+        if (normalizedFileUuid == normalizedUuid) {
+          return file;
+        }
+      }
+    }
+
+    if (statsFiles.length == 1) {
+      return statsFiles.first;
+    }
+
+    statsFiles.sort(
+      (File a, File b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+    );
+    return statsFiles.first;
+  }
+
   Map<String, dynamic>? _readInventoryItem(dynamic item) {
     if (item is! Map) {
       return null;
@@ -1119,6 +1266,16 @@ class ServerStorageService {
       return _legacyItemIds[legacyId] ?? 'legacy_$legacyId';
     }
     return '';
+  }
+
+  int _readIntStat(Map stats, List<String> keys) {
+    for (final String key in keys) {
+      final Object? value = stats[key];
+      if (value is num) {
+        return value.toInt();
+      }
+    }
+    return 0;
   }
 
   static const Map<int, String> _legacyItemIds = <int, String>{
@@ -1330,109 +1487,172 @@ class ServerStorageService {
 
     final List<Map<String, dynamic>> inventoryItems = <Map<String, dynamic>>[];
     final List<Map<String, dynamic>> enderItems = <Map<String, dynamic>>[];
-    final File? datFile = await _resolvePlayerDataFile(
+    File? datFile = await _resolvePlayerDataFile(
       serverPath: serverPath,
       levelName: levelName,
       uuid: uuid,
     );
 
+    // Fallback: if uuid-based lookup missed, try scanning the playerdata
+    // directory directly with a null UUID (picks most-recently-modified .dat).
+    if (datFile == null && uuid != null && uuid.isNotEmpty) {
+      datFile = await _resolvePlayerDataFile(
+        serverPath: serverPath,
+        levelName: levelName,
+        uuid: null,
+      );
+    }
+
     if (datFile != null) {
       uuid = path.basenameWithoutExtension(datFile.path);
     }
 
-    if (uuid != null && uuid.isNotEmpty) {
-      // 1. Read Stats
-      final String statsPath = await _resolvePathCaseInsensitively(
-        serverPath,
-        <String>[levelName, 'stats', '$uuid.json'],
+    File? statsFile = await _resolveStatsFile(
+      serverPath: serverPath,
+      levelName: levelName,
+      uuid: uuid,
+    );
+
+    // Fallback: try scanning the stats directory directly.
+    if (statsFile == null && uuid != null && uuid.isNotEmpty) {
+      statsFile = await _resolveStatsFile(
+        serverPath: serverPath,
+        levelName: levelName,
+        uuid: null,
       );
-      final File statsFile = File(statsPath);
-      if (await statsFile.exists()) {
-        try {
-          final String content = await statsFile.readAsString();
-          final Object? decoded = jsonDecode(content);
-          if (decoded is Map<String, dynamic>) {
-            final Map<String, dynamic>? statsMap =
-                decoded['stats'] as Map<String, dynamic>?;
-            if (statsMap != null) {
-              final Map<String, dynamic>? custom =
-                  statsMap['minecraft:custom'] as Map<String, dynamic>?;
-              if (custom != null) {
-                final int playtimeTicks =
-                    custom['minecraft:play_time'] ??
-                    custom['minecraft:play_one_minute'] ??
-                    0;
-                final int deaths = custom['minecraft:deaths'] ?? 0;
-                final int playerKills = custom['minecraft:player_kills'] ?? 0;
-                final int mobKills = custom['minecraft:mob_kills'] ?? 0;
+    }
 
-                final int totalSeconds = playtimeTicks ~/ 20;
-                final int hours = totalSeconds ~/ 3600;
-                final int minutes = (totalSeconds % 3600) ~/ 60;
+    if ((uuid == null || uuid.isEmpty) && statsFile != null) {
+      uuid = path.basenameWithoutExtension(statsFile.path);
+    }
 
-                resultStats['playtime'] =
-                    hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
-                resultStats['deaths'] = deaths;
-                resultStats['playerKills'] = playerKills;
-                resultStats['mobKills'] = mobKills;
-              }
+    // --- Read Stats JSON ---
+    if (statsFile != null && await statsFile.exists()) {
+      try {
+        final String content = await statsFile.readAsString();
+        final Object? decoded = jsonDecode(content);
+        if (decoded is Map) {
+          final Object? statsObject = decoded['stats'];
+          if (statsObject is Map) {
+            final Object? customObject = statsObject['minecraft:custom'];
+            if (customObject is Map) {
+              final int playtimeTicks = _readIntStat(
+                customObject,
+                <String>[
+                  'minecraft:play_time',
+                  'minecraft:play_one_minute',
+                  'minecraft:total_world_time',
+                  'minecraft:time_since_death',
+                ],
+              );
+              final int deaths = _readIntStat(
+                customObject,
+                <String>['minecraft:deaths'],
+              );
+              final int playerKills = _readIntStat(
+                customObject,
+                <String>['minecraft:player_kills'],
+              );
+              final int mobKills = _readIntStat(
+                customObject,
+                <String>['minecraft:mob_kills'],
+              );
+
+              final int totalSeconds = playtimeTicks ~/ 20;
+              final int hours = totalSeconds ~/ 3600;
+              final int minutes = (totalSeconds % 3600) ~/ 60;
+
+              resultStats['playtime'] =
+                  hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+              resultStats['deaths'] = deaths;
+              resultStats['playerKills'] = playerKills;
+              resultStats['mobKills'] = mobKills;
             }
           }
-        } catch (_) {}
-      }
-
-      // 2. Read Player Dat
-      if (datFile != null && await datFile.exists()) {
-        try {
-          final Uint8List compressedBytes = await datFile.readAsBytes();
-          final Uint8List decompressedBytes = _decodeNbtBytes(compressedBytes);
-          final Map<String, dynamic> nbt =
-              NbtReader(decompressedBytes).parseRoot();
-
-          final dynamic xpLevelVal = nbt['XpLevel'];
-          if (xpLevelVal is num) {
-            resultStats['xpLevel'] = xpLevelVal.toInt();
-          }
-
-          final dynamic healthVal = nbt['Health'];
-          if (healthVal is num) {
-            resultStats['health'] = healthVal.toDouble();
-          }
-
-          final dynamic posList = nbt['Pos'];
-          if (posList is List<dynamic> && posList.length >= 3) {
-            final double x = (posList[0] as num).toDouble();
-            final double y = (posList[1] as num).toDouble();
-            final double z = (posList[2] as num).toDouble();
-            resultStats['coordinates'] =
-                '${x.round()}, ${y.round()}, ${z.round()}';
-          }
-
-          final dynamic inv = nbt['Inventory'];
-          if (inv is List<dynamic>) {
-            for (final dynamic item in inv) {
-              final Map<String, dynamic>? inventoryItem =
-                  _readInventoryItem(item);
-              if (inventoryItem != null) {
-                inventoryItems.add(inventoryItem);
-              }
-            }
-          }
-
-          final dynamic ender = nbt['EnderItems'];
-          if (ender is List<dynamic>) {
-            for (final dynamic item in ender) {
-              final Map<String, dynamic>? enderItem = _readInventoryItem(item);
-              if (enderItem != null) {
-                enderItems.add(enderItem);
-              }
-            }
-          }
-        } catch (e, stack) {
-          // ignore: avoid_print
-          print('Error reading player NBT data: $e\n$stack');
         }
+      } catch (e) {
+        debugPrint('Error reading stats JSON: $e');
       }
+    }
+
+    // --- Read Player .dat (NBT) ---
+    if (datFile != null && await datFile.exists()) {
+      try {
+        final Uint8List compressedBytes = await datFile.readAsBytes();
+        final Uint8List decompressedBytes = _decodeNbtBytes(compressedBytes);
+        final Map<String, dynamic> nbt =
+            NbtReader(decompressedBytes).parseRoot();
+
+        final dynamic xpLevelVal = nbt['XpLevel'];
+        if (xpLevelVal is num) {
+          resultStats['xpLevel'] = xpLevelVal.toInt();
+        }
+
+        final dynamic healthVal = nbt['Health'];
+        if (healthVal is num) {
+          resultStats['health'] = healthVal.toDouble();
+        }
+
+        final dynamic posList = nbt['Pos'];
+        if (posList is List<dynamic> && posList.length >= 3) {
+          final double x = (posList[0] as num).toDouble();
+          final double y = (posList[1] as num).toDouble();
+          final double z = (posList[2] as num).toDouble();
+          resultStats['coordinates'] =
+              '${x.round()}, ${y.round()}, ${z.round()}';
+        }
+
+        final dynamic gameModeVal = nbt['playerGameType'];
+        if (gameModeVal is num) {
+          const List<String> gameModes = <String>[
+            'Survival', 'Creative', 'Adventure', 'Spectator',
+          ];
+          final int idx = gameModeVal.toInt();
+          resultStats['gameMode'] =
+              idx >= 0 && idx < gameModes.length ? gameModes[idx] : 'Unknown';
+        }
+
+        final dynamic foodLevel = nbt['foodLevel'];
+        if (foodLevel is num) {
+          resultStats['foodLevel'] = foodLevel.toInt();
+        }
+
+        final dynamic dimensionVal = nbt['Dimension'];
+        if (dimensionVal is String) {
+          resultStats['dimension'] = dimensionVal
+              .replaceFirst('minecraft:', '')
+              .replaceAll('_', ' ');
+        }
+
+        final dynamic inv = nbt['Inventory'];
+        if (inv is List<dynamic>) {
+          for (final dynamic item in inv) {
+            final Map<String, dynamic>? inventoryItem =
+                _readInventoryItem(item);
+            if (inventoryItem != null) {
+              inventoryItems.add(inventoryItem);
+            }
+          }
+        }
+
+        final dynamic ender = nbt['EnderItems'];
+        if (ender is List<dynamic>) {
+          for (final dynamic item in ender) {
+            final Map<String, dynamic>? enderItem = _readInventoryItem(item);
+            if (enderItem != null) {
+              enderItems.add(enderItem);
+            }
+          }
+        }
+      } catch (e, stack) {
+        debugPrint('Error reading player NBT data: $e\n$stack');
+      }
+    }
+
+    // Fallback: if uuid is still not set, use a marker to indicate data
+    // was attempted but no player-specific file was found.
+    if (uuid == null || uuid.isEmpty) {
+      uuid = lookupName;
     }
 
     return <String, dynamic>{
@@ -1441,6 +1661,7 @@ class ServerStorageService {
       'inventory': inventoryItems,
       'enderChest': enderItems,
       'playerDataPath': datFile?.path,
+      'statsPath': statsFile?.path,
     };
   }
 }

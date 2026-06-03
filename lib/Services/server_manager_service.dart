@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
+import 'package:bifrost/Models/player_record.dart';
 import 'package:bifrost/Services/google_drive_sync_service.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -176,6 +177,33 @@ class ServerManagerService extends ChangeNotifier {
       'known_players_$serverPath',
       merged.where((String player) => player.trim().isNotEmpty).toList()
         ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase())),
+    );
+  }
+
+  String _knownPlayerUuidKey(String serverPath, String playerName) {
+    return 'known_player_uuid_${serverPath}_${playerName.trim().toLowerCase()}';
+  }
+
+  Future<String?> _loadKnownPlayerUuidFor(
+    String serverPath,
+    String playerName,
+  ) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_knownPlayerUuidKey(serverPath, playerName));
+  }
+
+  Future<void> _saveKnownPlayerUuidFor(
+    String serverPath,
+    String playerName,
+    String uuid,
+  ) async {
+    if (playerName.trim().isEmpty || uuid.trim().isEmpty) {
+      return;
+    }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _knownPlayerUuidKey(serverPath, playerName),
+      uuid.trim(),
     );
   }
 
@@ -774,28 +802,77 @@ class ServerManagerService extends ChangeNotifier {
       ..sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 
+  Future<List<PlayerRecord>> readPlayerRecords(BifrostServer server) async {
+    final Map<String, PlayerRecord> records = <String, PlayerRecord>{};
+
+    void addRecord(PlayerRecord record) {
+      if (!record.hasName && !record.hasUuid) {
+        return;
+      }
+      final String key = record.normalizedKey;
+      final PlayerRecord? existing = records[key];
+      records[key] = existing == null ? record : existing.merge(record);
+    }
+
+    for (final PlayerRecord record
+        in await _serverStorageService.readPlayerRecords(server.path)) {
+      addRecord(record);
+    }
+
+    for (final String player in await _loadPersistedKnownPlayersFor(server.path)) {
+      final String? uuid = await _loadKnownPlayerUuidFor(server.path, player);
+      addRecord(PlayerRecord(name: player, uuid: uuid, source: 'persisted'));
+    }
+
+    for (final String player in knownPlayersFor(server.path)) {
+      final String? uuid = await _loadKnownPlayerUuidFor(server.path, player);
+      addRecord(PlayerRecord(name: player, uuid: uuid, source: 'console'));
+    }
+
+    return records.values.toList()
+      ..sort(
+        (PlayerRecord a, PlayerRecord b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+      );
+  }
+
   Future<Map<String, dynamic>> readPlayerDataAndStats(
     BifrostServer server,
     String playerName,
   ) async {
     Map<String, dynamic>? liveData;
     if (server.isOnline && !_looksLikeUuid(playerName)) {
+      // Trigger a save-all BEFORE reading anything so .dat files are current.
+      try {
+        await sendServerCommand(server: server, command: 'save-all flush');
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      } catch (e) {
+        debugPrint('Failed to save-all before loading player data: $e');
+      }
       try {
         liveData = await _readLivePlayerInventory(server, playerName);
       } catch (e) {
         debugPrint('Failed to read live player inventory: $e');
       }
-      try {
-        await sendServerCommand(server: server, command: 'save-all flush');
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-      } catch (e) {
-        debugPrint('Failed to save-all before loading player data: $e');
-      }
     }
+
+    // Always attempt UUID resolution from SharedPreferences.
+    String storedLookup = playerName;
+    if (!_looksLikeUuid(playerName)) {
+      storedLookup =
+          await _loadKnownPlayerUuidFor(server.path, playerName) ?? playerName;
+    }
+
     final Map<String, dynamic> storedData = await _serverStorageService.readPlayerDataAndStats(
       server.path,
-      playerName,
+      storedLookup,
     );
+    final String? storedUuid = storedData['uuid'] as String?;
+    if (storedUuid != null && storedUuid.isNotEmpty && !_looksLikeUuid(playerName)) {
+      unawaited(_saveKnownPlayerUuidFor(server.path, playerName, storedUuid));
+    }
+
+    // If we didn't attempt live data at all (server offline), return stored data directly.
     if (liveData == null) {
       return storedData;
     }
@@ -804,13 +881,15 @@ class ServerManagerService extends ChangeNotifier {
         liveData['inventory'] as List<Map<String, dynamic>>;
     final List<Map<String, dynamic>> liveEnderChest =
         liveData['enderChest'] as List<Map<String, dynamic>>;
+
+    // If live commands returned nothing (player not online in-game), just
+    // return the stored .dat data as-is — don't mark it as 'liveInventoryChecked'
+    // which would hide valid stored inventory with a misleading empty message.
     if (liveInventory.isEmpty && liveEnderChest.isEmpty) {
-      return <String, dynamic>{
-        ...storedData,
-        'liveInventoryChecked': true,
-      };
+      return storedData;
     }
 
+    // Live data takes priority over stored data for inventory display.
     return <String, dynamic>{
       ...storedData,
       if (liveInventory.isNotEmpty) 'inventory': liveInventory,
@@ -818,6 +897,7 @@ class ServerManagerService extends ChangeNotifier {
       'inventorySource': 'live',
     };
   }
+
 
   bool _looksLikeUuid(String value) {
     return RegExp(r'^[0-9a-fA-F-]{32,36}$').hasMatch(value.trim());
@@ -1235,6 +1315,10 @@ class ServerManagerService extends ChangeNotifier {
       caseSensitive: false,
     ),
   ];
+  static final RegExp _playerUuidPattern = RegExp(
+    r'\bUUID of player ([A-Za-z0-9_\.\*\-]{3,24}) is ([0-9a-fA-F-]{32,36})\b',
+    caseSensitive: false,
+  );
 
   void _rememberPlayersFromConsole(String serverPath, String consoleOutput) {
     final Set<String> players = _knownPlayersByServerPath.putIfAbsent(
@@ -1246,6 +1330,18 @@ class ServerManagerService extends ChangeNotifier {
 
     for (final String line in consoleOutput.split('\n')) {
       final String cleanLine = line.replaceAll(_ansiEscapePattern, '').replaceAll('\r', '');
+      final RegExpMatch? uuidMatch = _playerUuidPattern.firstMatch(cleanLine);
+      if (uuidMatch != null) {
+        final String? player = uuidMatch.group(1);
+        final String? uuid = uuidMatch.group(2);
+        if (player != null &&
+            player.trim().isNotEmpty &&
+            uuid != null &&
+            uuid.trim().isNotEmpty) {
+          players.add(player.trim());
+          unawaited(_saveKnownPlayerUuidFor(serverPath, player, uuid));
+        }
+      }
       for (final RegExp pattern in _playerPatterns) {
         final String? player = pattern.firstMatch(cleanLine)?.group(1);
         if (player != null && player.trim().isNotEmpty) {
