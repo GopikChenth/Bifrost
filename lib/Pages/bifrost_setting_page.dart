@@ -862,7 +862,7 @@ class _SettingsPageState extends State<SettingsPage>
                         children: <Widget>[
                           Row(
                             children: [
-                              Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 20),
+                              Icon(Icons.favorite_rounded, color: colors.primary, size: 20),
                               const SizedBox(width: 8),
                               Text(
                                 'Support Project',
