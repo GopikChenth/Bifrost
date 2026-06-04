@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.arcadelabs" "\0"
-            VALUE "FileDescription", "bifrost" "\0"
+            VALUE "FileDescription", "Bifrost" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "bifrost" "\0"
+            VALUE "InternalName", "Bifrost" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.arcadelabs. All rights reserved." "\0"
             VALUE "OriginalFilename", "bifrost.exe" "\0"
-            VALUE "ProductName", "bifrost" "\0"
+            VALUE "ProductName", "Bifrost" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
