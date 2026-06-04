@@ -1,0 +1,11 @@
+Bifrost is a Minecraft Java server manager for Android.
+
+It lets you create a Minecraft server, run it directly from your phone, manage the world, and share it with friends without having to rent a server using money or wait in long queues. Your phone becomes your own server, Bifrost handles the Minecraft server files, and Playit.gg helps you to play with your friends.
+
+Features:
+- Download and set up Minecraft Java edition server files automatically.
+- Bundles appropriate Java runtimes matching the Minecraft version.
+- Watch live server status console and manage player connections.
+- Local play (same Wi-Fi) and online play (via Playit.gg tunnel).
+- Create backups of your worlds locally or sync them to Google Drive.
+- GPL-3.0 licensed and fully open-source.
