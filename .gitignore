@@ -46,6 +46,7 @@ app.*.map.json
 
 # Local tooling
 .agents/
+agent/
 
 # Local secrets and machine-specific config
 .env
