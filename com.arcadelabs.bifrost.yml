@@ -14,7 +14,7 @@ Repo: https://github.com/GopikChenth/Bifrost.git
 Builds:
   - versionName: 1.0.0
     versionCode: 1
-    commit: b721e85f7320a7a9a3dbabd087ad9847b1244799
+    commit: 92de031f20425cd68ac6b94ad0c5c5c0d4816634
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
       - flutter@stable
