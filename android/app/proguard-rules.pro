@@ -1,5 +1,6 @@
-# Keep Flutter and plugin entry points available after R8 optimization.
--keep class io.flutter.** { *; }
+# Keep Flutter and plugin entry points available after R8 optimization,
+# but exclude Play Store dynamic features/deferred components so R8 can strip play-core.
+-keep class !io.flutter.embedding.android.FlutterPlayStoreSplitApplication, !io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager, io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
 # Keep native method owners stable for JNI lookups.
