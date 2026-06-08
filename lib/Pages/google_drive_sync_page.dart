@@ -6,7 +6,7 @@ import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Services/server_manager_service.dart';
 import 'package:bifrost/Services/google_drive_sync_service.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -691,7 +691,7 @@ class _AccountConnectionCard extends StatelessWidget {
     required this.onSignOut,
   });
 
-  final GoogleSignInAccount? user;
+  final GoogleDriveUser? user;
   final VoidCallback onSignIn;
   final VoidCallback onSignOut;
 

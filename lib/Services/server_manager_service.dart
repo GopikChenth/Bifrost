@@ -5,7 +5,7 @@ import 'package:bifrost/Components/add_server_window.dart';
 import 'package:bifrost/Models/bifrost_server.dart';
 import 'package:bifrost/Models/player_record.dart';
 import 'package:bifrost/Services/google_drive_sync_service.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+
 
 import 'package:bifrost/Services/paper_jar_service.dart';
 import 'package:bifrost/Services/vanilla_jar_service.dart';
@@ -1188,7 +1188,7 @@ class ServerManagerService extends ChangeNotifier {
                 _playtimeSecondsByServerPath[targetServerPath] = 0;
                 final SharedPreferences prefs = await SharedPreferences.getInstance();
                 final bool autoSyncEnabled = prefs.getBool('gdrive_autosync_$targetServerPath') ?? false;
-                final GoogleSignInAccount? user = GoogleDriveSyncService.instance.currentUser;
+                final GoogleDriveUser? user = GoogleDriveSyncService.instance.currentUser;
                 if (autoSyncEnabled && user != null) {
                   final BifrostServer? targetServer = serverByPath(targetServerPath);
                   if (targetServer != null) {

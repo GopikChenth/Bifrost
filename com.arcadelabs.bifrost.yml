@@ -1,0 +1,46 @@
+Categories:
+  - Game Helper
+  - System
+License: GPL-3.0-only
+AuthorName: GopikChenth
+SourceCode: https://github.com/GopikChenth/Bifrost
+IssueTracker: https://github.com/GopikChenth/Bifrost/issues
+
+AutoName: Bifrost
+
+RepoType: git
+Repo: https://github.com/GopikChenth/Bifrost.git
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 1
+    commit: b721e85f7320a7a9a3dbabd087ad9847b1244799
+    output: build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - flutter@stable
+    rm:
+      - windows
+      - linux
+      - web
+    prebuild:
+      - rm -rf android/app/src/main/jniLibs
+      - sed -i -e '/google_sign_in/d' -e '/extension_google_sign_in_as_googleapis_auth/d' pubspec.yaml
+      - cp lib/Services/google_drive_sync_service_foss.dart lib/Services/google_drive_sync_service.dart
+      - sed -i -e '/com.google.gms.google-services/d' android/app/build.gradle.kts android/settings.gradle.kts
+      - flutterVersion=$(sed -n -E "s/.*flutter-version:\ '(.*)'/\1/p" .github/workflows/release.yml)
+      - '[[ $flutterVersion ]]'
+      - git -C $$flutter$$ checkout -f $flutterVersion
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get
+    scandelete:
+      - .pub-cache
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1

@@ -301,6 +301,20 @@ class _SettingsPageState extends State<SettingsPage>
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
+    final TextStyle mainHeaderStyle = theme.textTheme.titleMedium?.copyWith(
+      fontWeight: FontWeight.bold,
+      color: colors.onSurface,
+    ) ?? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16);
+
+    final TextStyle subheadingStyle = theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.bold,
+      color: colors.onSurface,
+    ) ?? const TextStyle(fontWeight: FontWeight.bold, fontSize: 14);
+
+    final TextStyle subtextStyle = theme.textTheme.bodySmall?.copyWith(
+      color: colors.onSurfaceVariant,
+    ) ?? TextStyle(fontSize: 12, color: colors.onSurfaceVariant);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: _isLoading
@@ -331,10 +345,7 @@ class _SettingsPageState extends State<SettingsPage>
                               const SizedBox(width: 8),
                               Text(
                                 'System & Permissions',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colors.onSurface,
-                                ),
+                                style: mainHeaderStyle,
                               ),
                             ],
                           ),
@@ -354,9 +365,7 @@ class _SettingsPageState extends State<SettingsPage>
                               Expanded(
                                 child: Text(
                                   'Storage Access',
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: subheadingStyle,
                                 ),
                               ),
                               if (_hasAllFilesAccess)
@@ -402,18 +411,14 @@ class _SettingsPageState extends State<SettingsPage>
                                   children: <Widget>[
                                     Text(
                                       'Battery Optimization',
-                                      style: theme.textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: subheadingStyle,
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       _isBatteryOptimizationIgnored
                                           ? 'Exempt (prevents server disconnection when phone sleeps)'
                                           : 'Restricted (server may disconnect when phone sleeps)',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: colors.onSurfaceVariant,
-                                      ),
+                                      style: subtextStyle,
                                     ),
                                   ],
                                 ),
@@ -482,7 +487,7 @@ class _SettingsPageState extends State<SettingsPage>
                                     '$_deviceManufacturer devices aggressively restrict background processes in sleep. To prevent server disconnection:\n'
                                     '1. Tap "Go to App Info" below, go to "Battery" or "Battery usage", and choose "Unrestricted" or enable "Allow background activity".\n'
                                     '2. In phone settings, go to "Battery" -> "More/Advanced settings" -> disable "Sleep standby optimization".',
-                                    style: theme.textTheme.bodySmall?.copyWith(
+                                    style: subtextStyle.copyWith(
                                       color: colors.onErrorContainer,
                                       height: 1.4,
                                     ),
@@ -541,25 +546,20 @@ class _SettingsPageState extends State<SettingsPage>
                               const SizedBox(width: 8),
                               Text(
                                 'Storage & Backups',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colors.onSurface,
-                                ),
+                                style: mainHeaderStyle,
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'Server Storage',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: subheadingStyle,
                           ),
                           const SizedBox(height: 4),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Use default directory'),
+                            title: Text('Use default directory', style: subheadingStyle),
                             value: _useDefaultDirectory,
                             onChanged: _setDefaultDirectory,
                           ),
@@ -628,15 +628,12 @@ class _SettingsPageState extends State<SettingsPage>
                               children: <Widget>[
                                 Text(
                                   'Path: ',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colors.onSurfaceVariant,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: subtextStyle,
                                 ),
                                 Expanded(
                                   child: SelectableText(
                                     _resolvedDirectoryPath,
-                                    style: theme.textTheme.bodySmall?.copyWith(
+                                    style: subtextStyle.copyWith(
                                       fontFamily: 'monospace',
                                     ),
                                   ),
@@ -652,8 +649,7 @@ class _SettingsPageState extends State<SettingsPage>
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Text(
                                       _statusMessage!,
-                                      style:
-                                          theme.textTheme.bodySmall?.copyWith(
+                                      style: subtextStyle.copyWith(
                                         color: colors.error,
                                       ),
                                     ),
@@ -663,17 +659,16 @@ class _SettingsPageState extends State<SettingsPage>
                           const Divider(height: 24, thickness: 0.5),
                           Text(
                             'Shared Worlds',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: subheadingStyle,
                           ),
                           const SizedBox(height: 4),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Manage Shared Worlds'),
-                            subtitle: const Text(
+                            title: Text('Manage Shared Worlds', style: subheadingStyle),
+                            subtitle: Text(
                               'Download co-op worlds shared by your friends',
+                              style: subtextStyle,
                             ),
                             trailing: const Icon(
                               Icons.chevron_right_rounded,
@@ -720,25 +715,20 @@ class _SettingsPageState extends State<SettingsPage>
                               const SizedBox(width: 8),
                               Text(
                                 'Application Preferences',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colors.onSurface,
-                                ),
+                                style: mainHeaderStyle,
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'UI Behavior',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: subheadingStyle,
                           ),
                           const SizedBox(height: 4),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Disable animations'),
+                            title: Text('Disable animations', style: subheadingStyle),
                             value: _disableAnimations,
                             onChanged: (bool value) {
                               setState(() {
@@ -751,9 +741,10 @@ class _SettingsPageState extends State<SettingsPage>
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Run startup guide'),
-                            subtitle: const Text(
+                            title: Text('Run startup guide', style: subheadingStyle),
+                            subtitle: Text(
                               'Configure storage and battery optimization settings',
+                              style: subtextStyle,
                             ),
                             trailing: const Icon(
                               Icons.chevron_right_rounded,
@@ -771,12 +762,10 @@ class _SettingsPageState extends State<SettingsPage>
                           const Divider(height: 24, thickness: 0.5),
                           Text(
                             'Appearance Theme',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: subheadingStyle,
                           ),
                           const SizedBox(height: 8),
-                           Row(
+                          Row(
                             children: <Widget>[
                               Expanded(
                                 child: DropdownButtonFormField<String>(
@@ -866,10 +855,7 @@ class _SettingsPageState extends State<SettingsPage>
                               const SizedBox(width: 8),
                               Text(
                                 'Support Project',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colors.onSurface,
-                                ),
+                                style: mainHeaderStyle,
                               ),
                             ],
                           ),
@@ -881,9 +867,10 @@ class _SettingsPageState extends State<SettingsPage>
                               Icons.coffee_rounded,
                               color: colors.primary,
                             ),
-                            title: const Text('Buy me a coffee', style: TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: const Text(
+                            title: Text('Buy me a coffee', style: subheadingStyle),
+                            subtitle: Text(
                               'Support Bifrost development on Ko-fi',
+                              style: subtextStyle,
                             ),
                             trailing: const Icon(
                               Icons.open_in_new_rounded,
@@ -899,9 +886,10 @@ class _SettingsPageState extends State<SettingsPage>
                               Icons.description_rounded,
                               color: colors.primary,
                             ),
-                            title: const Text('Licenses', style: TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: const Text(
+                            title: Text('Licenses', style: subheadingStyle),
+                            subtitle: Text(
                               'View licenses for Bifrost and its dependencies',
+                              style: subtextStyle,
                             ),
                             trailing: const Icon(
                               Icons.chevron_right_rounded,
@@ -926,3 +914,4 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 }
+

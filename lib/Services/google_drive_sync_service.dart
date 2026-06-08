@@ -5,6 +5,18 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 
+class GoogleDriveUser {
+  final String email;
+  final String? displayName;
+  final String? photoUrl;
+
+  GoogleDriveUser({
+    required this.email,
+    this.displayName,
+    this.photoUrl,
+  });
+}
+
 class GoogleDriveSyncService {
   GoogleDriveSyncService._internal();
   
@@ -18,21 +30,49 @@ class GoogleDriveSyncService {
     ],
   );
 
-  GoogleSignInAccount? get currentUser => _googleSignIn.currentUser;
+  GoogleDriveUser? get currentUser {
+    final user = _googleSignIn.currentUser;
+    if (user == null) return null;
+    return GoogleDriveUser(
+      email: user.email,
+      displayName: user.displayName,
+      photoUrl: user.photoUrl,
+    );
+  }
   
-  Stream<GoogleSignInAccount?> get onCurrentUserChanged => _googleSignIn.onCurrentUserChanged;
+  Stream<GoogleDriveUser?> get onCurrentUserChanged => 
+      _googleSignIn.onCurrentUserChanged.map((user) {
+        if (user == null) return null;
+        return GoogleDriveUser(
+          email: user.email,
+          displayName: user.displayName,
+          photoUrl: user.photoUrl,
+        );
+      });
 
-  Future<GoogleSignInAccount?> signIn() async {
+  Future<GoogleDriveUser?> signIn() async {
     try {
-      return await _googleSignIn.signIn();
+      final user = await _googleSignIn.signIn();
+      if (user == null) return null;
+      return GoogleDriveUser(
+        email: user.email,
+        displayName: user.displayName,
+        photoUrl: user.photoUrl,
+      );
     } catch (e) {
       rethrow;
     }
   }
 
-  Future<GoogleSignInAccount?> signInSilently() async {
+  Future<GoogleDriveUser?> signInSilently() async {
     try {
-      return await _googleSignIn.signInSilently();
+      final user = await _googleSignIn.signInSilently();
+      if (user == null) return null;
+      return GoogleDriveUser(
+        email: user.email,
+        displayName: user.displayName,
+        photoUrl: user.photoUrl,
+      );
     } catch (e) {
       return null;
     }
