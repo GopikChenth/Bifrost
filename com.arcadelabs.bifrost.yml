@@ -10,11 +10,12 @@ AutoName: Bifrost
 
 RepoType: git
 Repo: https://github.com/GopikChenth/Bifrost.git
+Binaries: https://github.com/GopikChenth/Bifrost/releases/download/v%v/Bifrost-foss-v%v.apk
 
 Builds:
   - versionName: 1.0.0
     versionCode: 1
-    commit: 92de031f20425cd68ac6b94ad0c5c5c0d4816634
+    commit: 6098393a5a9f4541210b173b122c6dcb6493fb8f
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
       - flutter@stable
@@ -24,10 +25,13 @@ Builds:
       - web
     prebuild:
       - rm -rf android/app/src/main/jniLibs
-      - sed -i -e '/google_sign_in/d' -e '/extension_google_sign_in_as_googleapis_auth/d' pubspec.yaml
+      - sed -i -e '/google_sign_in/d' -e '/extension_google_sign_in_as_googleapis_auth/d'
+        pubspec.yaml
       - cp lib/Services/google_drive_sync_service_foss.dart lib/Services/google_drive_sync_service.dart
-      - sed -i -e '/com.google.gms.google-services/d' android/app/build.gradle.kts android/settings.gradle.kts
-      - flutterVersion=$(sed -n -E "s/.*flutter-version:\ '(.*)'/\1/p" .github/workflows/release.yml)
+      - sed -i -e '/com.google.gms.google-services/d' android/app/build.gradle.kts
+        android/settings.gradle.kts
+      - flutterVersion=$(grep "flutter-version:" .github/workflows/release.yml | cut
+        -d "'" -f 2)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
       - export PUB_CACHE=$(pwd)/.pub-cache
@@ -38,6 +42,8 @@ Builds:
     build:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release
+
+AllowedAPKSigningKeys: a6becf11cba46230e1f8bdaae98f2e5d1f1a3d0d02b192f176f14799edc80b14
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
