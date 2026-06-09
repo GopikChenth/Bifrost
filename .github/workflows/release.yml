@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -24,8 +26,68 @@ jobs:
           flutter-version: '3.44.0'
           channel: 'stable'
 
-      - name: Get Dependencies
-        run: flutter pub get
+      # Set up release signing keys from secrets
+      - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/bifrost-release.jks
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Create key.properties
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          echo "storePassword=$KEYSTORE_PASSWORD" > android/key.properties
+          echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
+          echo "keyAlias=$KEY_ALIAS" >> android/key.properties
+          echo "storeFile=bifrost-release.jks" >> android/key.properties
+
+      # ----------------------------------------------------
+      # Build Standard Version
+      # ----------------------------------------------------
+      - name: Build Standard APK
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build apk --release
+
+      - name: Move Standard APK
+        run: |
+          mkdir -p build/outputs
+          mv build/app/outputs/flutter-apk/app-release.apk build/outputs/Bifrost-${{ github.ref_name }}.apk
+
+      # ----------------------------------------------------
+      # Build FOSS Version
+      # ----------------------------------------------------
+      - name: Apply FOSS prebuild steps
+        run: |
+          rm -rf android/app/src/main/jniLibs
+          sed -i -e '/google_sign_in/d' -e '/extension_google_sign_in_as_googleapis_auth/d' pubspec.yaml
+          cp lib/Services/google_drive_sync_service_foss.dart lib/Services/google_drive_sync_service.dart
+          sed -i -e '/com.google.gms.google-services/d' android/app/build.gradle.kts android/settings.gradle.kts
+
+      - name: Build FOSS APK
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build apk --release
+
+      - name: Move FOSS APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/outputs/Bifrost-foss-${{ github.ref_name }}.apk
+
+      # ----------------------------------------------------
+      # Create Release and Upload Assets
+      # ----------------------------------------------------
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/outputs/Bifrost-${{ github.ref_name }}.apk
+            build/outputs/Bifrost-foss-${{ github.ref_name }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
