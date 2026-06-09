@@ -10,7 +10,8 @@ AutoName: Bifrost
 
 RepoType: git
 Repo: https://github.com/GopikChenth/Bifrost.git
-Binaries: https://github.com/GopikChenth/Bifrost/releases/download/v%v/Bifrost-foss-v%v.apk
+Binaries:
+  https://github.com/GopikChenth/Bifrost/releases/download/v%v/Bifrost-foss-v%v.apk
 
 Builds:
   - versionName: 1.0.0
