@@ -145,6 +145,58 @@ Battery optimization also matters. Some Android phones are aggressive about stop
 - Keep backups before replacing or regenerating a world.
 - Playit.gg is separate from Bifrost. Bifrost runs the server; Playit provides the public tunnel address.
 - There will a warning when you try to login in with google account. Don't worry about the warning click advanced and continue with login process.
+## Development & Building
+
+### Prerequisites
+- Flutter SDK (stable channel, matching version in `.github/workflows/release.yml`)
+- Android SDK & NDK
+- JDK 17
+
+### 1. Standard Build
+To compile the standard release version of the application (includes Google Drive sync via Google Play Services):
+```bash
+flutter pub get
+flutter build apk --release
+```
+
+### 2. Building for an Independent/FOSS System (GMS-Free)
+F-Droid and other FOSS (Free and Open Source Software) portals compile applications without any proprietary/closed-source Google libraries or services. 
+
+To build this independent FOSS version locally:
+
+#### Option A: Automated Build (Windows PowerShell)
+Run the helper script provided in the root directory:
+```powershell
+.\build_foss_release.ps1
+```
+This script will temporarily apply all GMS-stripping steps, build the FOSS release APK, save it to `build/foss-release/`, and then restore your working directory back to normal.
+
+#### Option B: Manual Build (Linux / Mac / Windows Bash)
+Apply the following steps to decouple the GMS dependencies before compilation:
+1. Remove GMS plugins and binary libraries:
+   ```bash
+   rm -rf android/app/src/main/jniLibs
+   ```
+2. Strip `google_sign_in` and its related extensions from `pubspec.yaml`:
+   ```bash
+   sed -i -e '/google_sign_in/d' -e '/extension_google_sign_in_as_googleapis_auth/d' pubspec.yaml
+   ```
+3. Swap the active Google Drive Sync Service with the FOSS mock stub:
+   ```bash
+   cp lib/Services/google_drive_sync_service_foss.dart lib/Services/google_drive_sync_service.dart
+   ```
+4. Strip the Google Services Gradle plugin:
+   ```bash
+   sed -i -e '/com.google.gms.google-services/d' android/app/build.gradle.kts android/settings.gradle.kts
+   ```
+5. Build the APK:
+   ```bash
+   flutter clean
+   flutter pub get
+   flutter build apk --release
+   ```
+
+---
 
 ## Used For Reffrence
 
